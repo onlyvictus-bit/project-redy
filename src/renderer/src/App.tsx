@@ -3,18 +3,19 @@ import { useEffect, useState } from 'react';
 import type { AgentProfile } from '@shared/types';
 import { WORKFLOW_DEFINITIONS } from '@shared/workflows';
 
-import { useWorkbenchStore } from './store';
 import { AgentPanel } from './components/AgentPanel';
+import { FindingsPanel } from './components/FindingsPanel';
 import { TaskCard } from './components/TaskCard';
+import { TaskDetailPanel } from './components/TaskDetailPanel';
+import { useWorkbenchStore } from './store';
 
-import '@xterm/xterm/css/xterm.css';
 import './styles.css';
-
 
 export default function App() {
   const snapshot = useWorkbenchStore((state) => state.snapshot);
   const error = useWorkbenchStore((state) => state.error);
   const isBusy = useWorkbenchStore((state) => state.isBusy);
+  const selectedTaskId = useWorkbenchStore((state) => state.selectedTaskId);
   const bootstrap = useWorkbenchStore((state) => state.bootstrap);
   const applySnapshot = useWorkbenchStore((state) => state.applySnapshot);
   const appendTerminalData = useWorkbenchStore((state) => state.appendTerminalData);
@@ -23,7 +24,6 @@ export default function App() {
   const setProjectRunner = useWorkbenchStore((state) => state.setProjectRunner);
   const startWorkflow = useWorkbenchStore((state) => state.startWorkflow);
   const promoteTask = useWorkbenchStore((state) => state.promoteTask);
-  const selectedTaskId = useWorkbenchStore((state) => state.selectedTaskId);
   const selectTask = useWorkbenchStore((state) => state.selectTask);
   const setOllamaRole = useWorkbenchStore((state) => state.setOllamaRole);
   const shutdownOllama = useWorkbenchStore((state) => state.shutdownOllama);
@@ -49,8 +49,7 @@ export default function App() {
     return <div className="loading-screen">Booting Triad Workbench...</div>;
   }
 
-  const latestTask = snapshot.tasks[0];
-  const findings = latestTask?.findings ?? [];
+  const selectedTask = snapshot.tasks.find((t) => t.id === selectedTaskId) ?? snapshot.tasks[0];
 
   return (
     <div className="shell">
@@ -98,7 +97,7 @@ export default function App() {
                 <TaskCard
                   key={task.id}
                   task={task}
-                  isSelected={task.id === selectedTaskId}
+                  isSelected={task.id === selectedTask?.id}
                   onSelect={() => selectTask(task.id)}
                   onPromote={(action) => void promoteTask(task.id, action)}
                 />
@@ -109,27 +108,18 @@ export default function App() {
           </section>
         </aside>
 
-        <section className="center-grid">
-          {(Object.values(snapshot.agents) as AgentProfile[]).map((agent) => (
-            <AgentPanel key={agent.id} agent={agent} />
-          ))}
+        <section className="center-area">
+          <div className="center-grid">
+            {(Object.values(snapshot.agents) as AgentProfile[]).map((agent) => (
+              <AgentPanel key={agent.id} agent={agent} />
+            ))}
+          </div>
+
+          <TaskDetailPanel task={selectedTask} />
         </section>
 
         <aside className="right-rail">
-          <section className="card">
-            <h2>Findings</h2>
-            {findings.length ? (
-              findings.map((finding, index) => (
-                <article key={`${finding.sourceAgent}-${index}`} className={`finding finding-${finding.severity}`}>
-                  <h4>{finding.title}</h4>
-                  <p>{finding.body}</p>
-                  <span>{finding.sourceAgent}</span>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">No findings yet.</p>
-            )}
-          </section>
+          <FindingsPanel task={selectedTask} />
 
           <section className="card">
             <h2>Ollama</h2>
