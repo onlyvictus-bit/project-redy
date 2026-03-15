@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type {
   AgentId,
   AgentRole,
+  ContinueTaskOptions,
   PromotionAction,
   RunnerKind,
   StartWorkflowInput,
@@ -27,6 +28,7 @@ interface WorkbenchState {
   sendTerminalInput: (sessionId: string, input: string) => Promise<void>;
   startWorkflow: (input: StartWorkflowInput) => Promise<void>;
   promoteTask: (taskId: string, action: PromotionAction) => Promise<void>;
+  continueTask: (taskId: string, options: ContinueTaskOptions) => Promise<void>;
   setOllamaRole: (role: AgentRole, model?: string) => Promise<void>;
   shutdownOllama: () => Promise<void>;
   setProjectArchiveEnabled: (enabled: boolean) => Promise<void>;
@@ -100,6 +102,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   },
   promoteTask: async (taskId, action) => {
     await runAction(set, () => window.workbench.promoteTask(taskId, action), (snapshot) => set({ snapshot }));
+  },
+  continueTask: async (taskId, options) => {
+    await runAction(set, () => window.workbench.continueTask(taskId, options), (snapshot) => set({ snapshot }));
   },
   setOllamaRole: async (role, model) => {
     await runAction(set, () => window.workbench.setOllamaRole(role, model), (snapshot) => set({ snapshot }));

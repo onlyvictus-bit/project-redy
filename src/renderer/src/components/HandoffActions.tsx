@@ -12,7 +12,8 @@ function formatFindingsBrief(taskId: string, findings: Finding[]): string {
 }
 
 export function HandoffActions({ task, findings }: HandoffActionsProps) {
-  const startWorkflow = useWorkbenchStore((state) => state.startWorkflow);
+  const continueTask = useWorkbenchStore((state) => state.continueTask);
+  const isBusy = useWorkbenchStore((state) => state.isBusy);
 
   return (
     <div className="handoff-actions">
@@ -20,10 +21,14 @@ export function HandoffActions({ task, findings }: HandoffActionsProps) {
       <div className="handoff-buttons">
         <button
           className="handoff-btn handoff-claude"
+          disabled={isBusy}
           onClick={() => {
-            void startWorkflow({
-              brief: formatFindingsBrief(task.id, findings),
-              workflowId: 'code-review-fix-verify'
+            void continueTask(task.id, {
+              mode: 'single-step',
+              stage: 'fix',
+              agentId: 'claude',
+              role: 'coder',
+              prompt: findings.length > 0 ? formatFindingsBrief(task.id, findings) : undefined
             });
           }}
         >
@@ -31,10 +36,13 @@ export function HandoffActions({ task, findings }: HandoffActionsProps) {
         </button>
         <button
           className="handoff-btn handoff-codex"
+          disabled={isBusy}
           onClick={() => {
-            void startWorkflow({
-              brief: `Verify the latest changes for task ${task.id.slice(0, 8)}. Check for regressions and run tests.`,
-              workflowId: 'code-review-fix-verify'
+            void continueTask(task.id, {
+              mode: 'single-step',
+              stage: 'verify',
+              agentId: 'codex',
+              role: 'tester'
             });
           }}
         >
@@ -42,10 +50,13 @@ export function HandoffActions({ task, findings }: HandoffActionsProps) {
         </button>
         <button
           className="handoff-btn handoff-gemini"
+          disabled={isBusy}
           onClick={() => {
-            void startWorkflow({
-              brief: `Review the architecture of task ${task.id.slice(0, 8)}: ${task.brief}\n\nFindings so far:\n${findings.map((f) => `- ${f.title}`).join('\n')}`,
-              workflowId: 'code-gemini-compare-codex-review'
+            void continueTask(task.id, {
+              mode: 'single-step',
+              stage: 'review',
+              agentId: 'gemini',
+              role: 'architect'
             });
           }}
         >
