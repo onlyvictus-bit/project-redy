@@ -1,134 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import type { AgentId, AgentProfile, AgentRole, TaskRun } from '@shared/types';
+import type { AgentProfile } from '@shared/types';
 import { WORKFLOW_DEFINITIONS } from '@shared/workflows';
 
 import { useWorkbenchStore } from './store';
-import { TerminalPane } from './components/TerminalPane';
+import { AgentPanel } from './components/AgentPanel';
+import { TaskCard } from './components/TaskCard';
 
 import '@xterm/xterm/css/xterm.css';
 import './styles.css';
 
-const ROLE_OPTIONS: AgentRole[] = ['coder', 'reviewer', 'tester', 'architect', 'planner', 'monitor', 'developer', 'off'];
-
-function formatStatus(agent: AgentProfile): string {
-  return `${agent.status}${agent.version ? ` - ${agent.version}` : ''}`;
-}
-
-function findTerminalSession(agentId: AgentId, snapshot: ReturnType<typeof useWorkbenchStore.getState>['snapshot']) {
-  return snapshot?.terminals.find((session) => session.agentId === agentId);
-}
-
-function AgentPanel({ agent }: { agent: AgentProfile }) {
-  const snapshot = useWorkbenchStore((state) => state.snapshot);
-  const terminalBuffers = useWorkbenchStore((state) => state.terminalBuffers);
-  const setAgentRole = useWorkbenchStore((state) => state.setAgentRole);
-  const startTerminal = useWorkbenchStore((state) => state.startTerminal);
-  const stopTerminal = useWorkbenchStore((state) => state.stopTerminal);
-  const sendTerminalInput = useWorkbenchStore((state) => state.sendTerminalInput);
-  const setOllamaRole = useWorkbenchStore((state) => state.setOllamaRole);
-  const session = findTerminalSession(agent.id, snapshot);
-  const [input, setInput] = useState('');
-
-  const latestArtifact = useMemo(
-    () => snapshot?.tasks.flatMap((task) => task.artifacts).find((artifact) => artifact.agentId === agent.id),
-    [agent.id, snapshot?.tasks]
-  );
-
-  return (
-    <section className="agent-panel">
-      <div className="panel-header">
-        <div>
-          <h3>{agent.displayName}</h3>
-          <p>{formatStatus(agent)}</p>
-        </div>
-        <select
-          value={agent.role}
-          onChange={(event) => {
-            const role = event.target.value as AgentRole;
-            if (agent.id === 'ollama') {
-              void setOllamaRole(role);
-            } else {
-              void setAgentRole(agent.id, role);
-            }
-          }}
-        >
-          {ROLE_OPTIONS.map((role) => (
-            <option key={role} value={role}>
-              {role}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="panel-body">
-        <p className="panel-message">{agent.message || 'No probe details yet.'}</p>
-        {agent.installHelpUrl ? (
-          <a href={agent.installHelpUrl} target="_blank" rel="noreferrer">
-            Install or login help
-          </a>
-        ) : null}
-
-        <div className="panel-actions">
-          {agent.capabilities.supportsInteractive ? (
-            session ? (
-              <button onClick={() => void stopTerminal(session.id)}>Stop terminal</button>
-            ) : (
-              <button onClick={() => void startTerminal(agent.id)}>Start terminal</button>
-            )
-          ) : null}
-        </div>
-
-        <TerminalPane sessionId={session?.id} buffer={session ? terminalBuffers[session.id] : ''} />
-
-        {session ? (
-          <form
-            className="terminal-input"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!input.trim()) {
-                return;
-              }
-              void sendTerminalInput(session.id, `${input}\r`);
-              setInput('');
-            }}
-          >
-            <input value={input} onChange={(event) => setInput(event.target.value)} placeholder={`Send input to ${agent.displayName}`} />
-            <button type="submit">Send</button>
-          </form>
-        ) : null}
-
-        <div className="artifact-summary">
-          <strong>Latest artifact</strong>
-          <p>{latestArtifact?.summary || 'No artifacts yet.'}</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TaskCard({ task, onPromote }: { task: TaskRun; onPromote: (action: 'apply-to-main' | 'keep-worktree' | 'open-task-branch') => void }) {
-  return (
-    <article className="task-card">
-      <div className="task-card-header">
-        <h4>{task.brief}</h4>
-        <span>{task.stage}</span>
-      </div>
-      <p>{task.summary || 'No summary yet.'}</p>
-      <div className="task-meta">
-        <span>{task.workflowId}</span>
-        <span>{task.branchName}</span>
-      </div>
-      {task.stage === 'promote' ? (
-        <div className="task-actions">
-          <button onClick={() => onPromote('apply-to-main')}>Apply to main</button>
-          <button onClick={() => onPromote('keep-worktree')}>Keep worktree</button>
-          <button onClick={() => onPromote('open-task-branch')}>Open task branch</button>
-        </div>
-      ) : null}
-    </article>
-  );
-}
 
 export default function App() {
   const snapshot = useWorkbenchStore((state) => state.snapshot);
@@ -142,6 +23,8 @@ export default function App() {
   const setProjectRunner = useWorkbenchStore((state) => state.setProjectRunner);
   const startWorkflow = useWorkbenchStore((state) => state.startWorkflow);
   const promoteTask = useWorkbenchStore((state) => state.promoteTask);
+  const selectedTaskId = useWorkbenchStore((state) => state.selectedTaskId);
+  const selectTask = useWorkbenchStore((state) => state.selectTask);
   const setOllamaRole = useWorkbenchStore((state) => state.setOllamaRole);
   const shutdownOllama = useWorkbenchStore((state) => state.shutdownOllama);
   const setProjectArchiveEnabled = useWorkbenchStore((state) => state.setProjectArchiveEnabled);
@@ -211,7 +94,15 @@ export default function App() {
           <section className="card">
             <h2>Tasks</h2>
             {snapshot.tasks.length ? (
-              snapshot.tasks.map((task) => <TaskCard key={task.id} task={task} onPromote={(action) => void promoteTask(task.id, action)} />)
+              snapshot.tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  isSelected={task.id === selectedTaskId}
+                  onSelect={() => selectTask(task.id)}
+                  onPromote={(action) => void promoteTask(task.id, action)}
+                />
+              ))
             ) : (
               <p className="empty-state">No tasks yet.</p>
             )}
