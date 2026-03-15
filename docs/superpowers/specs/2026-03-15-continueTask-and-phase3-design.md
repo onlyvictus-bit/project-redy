@@ -45,7 +45,7 @@ export type ContinueTaskOptions =
     }
   | {
       mode: 'single-step';
-      stage: TaskStage;
+      stage: ResumableStage;       // narrowed from TaskStage — only stages with prompt builders
       agentId: AgentId;
       role: ActiveAgentRole;
       prompt?: string;
@@ -217,32 +217,57 @@ First-run setup is unreliable when agents are missing, not logged in, or running
 
 ### Design
 
-Phase 3 is purely probe logic + UI messaging. No new types needed — `AgentStatus` already has the right values.
+Phase 3 is primarily probe logic + UI messaging. `AgentStatus` already has the right status values. One type change is needed: add `availableModels` to `OllamaStatus` to transport discovered model names to the renderer.
+
+#### Type Change: `src/shared/types.ts`
+
+```typescript
+export interface OllamaStatus {
+  available: boolean;
+  running: boolean;
+  owner: OllamaLifecycleOwner;
+  activeModel?: string;
+  availableModels?: string[];   // NEW — discovered model names from /api/tags
+  endpoint: string;
+  message?: string;
+}
+```
+
+This is the only shared type change for Feature B.
 
 ### Connector Probe Enhancements
 
-Each connector's `probe()` method gets deeper checks:
+Each connector overrides `performDeepAuthProbe()` (protected in `BaseConnector`). The base `probe()` already handles binary detection (`missing` → `installed`). Deep probes run when `deep = true` and determine `needs-login` vs `ready`.
+
+**Critical:** All CLI agents default to `authMode: 'native-login'` in `DEFAULT_AGENTS`. The probe strategy must match the agent's `authMode`, not assume API keys.
 
 #### Claude Connector (`claude-connector.ts`)
-- Check binary exists → `missing` vs `installed`
-- Run `claude auth status` (or equivalent) → `needs-login` vs `ready`
-- If auth check fails with timeout → `error` with message
+- `authMode: 'native-login'` → run `claude auth status` (or a lightweight `claude -p "ping" --output-format json` with short timeout)
+- If exit code 0 → `ready`; if auth error → `needs-login` with message "Run `claude login`"
+- If timeout → `error` with message
+- Do NOT check environment variables — Claude uses native browser-based login
 
 #### Codex Connector (`codex-connector.ts`)
-- Check binary exists → `missing` vs `installed`
-- Run `codex --version` to confirm working install
-- Check `OPENAI_API_KEY` environment variable → `needs-login` vs `ready`
+- `authMode: 'native-login'` → Codex authenticates via ChatGPT subscription (native login flow), not via `OPENAI_API_KEY`
+- Run `codex --version` to confirm install
+- Run a lightweight auth check: `codex exec "echo ok"` with short timeout
+- If exit code 0 → `ready`; if auth error → `needs-login` with message "Run `codex login` or sign in with your ChatGPT account"
+- Only fall back to `OPENAI_API_KEY` check if `authMode` is explicitly set to `'api-key'`
 
 #### Gemini Connector (`gemini-connector.ts`)
-- Check binary exists → `missing` vs `installed`
-- Check `GOOGLE_API_KEY` or `gcloud auth` → `needs-login` vs `ready`
-- Show guidance: "Set GOOGLE_API_KEY or run `gcloud auth login`"
+- `authMode: 'native-login'` → Gemini CLI authenticates via Google account (browser-based login flow), not via `GOOGLE_API_KEY`
+- Run a lightweight auth check: `gemini -p "ping" --output-format stream-json` with short timeout
+- If exit code 0 → `ready`; if auth error → `needs-login` with message "Run `gemini login` or sign in with your Google account"
+- Only fall back to `GOOGLE_API_KEY`/`gcloud auth` check if `authMode` is explicitly set to `'api-key'`
+- Note: `GeminiConnector.getScriptedCommand()` already branches on `authMode === 'api-key'` for env passthrough
 
 #### Ollama Connector (`ollama-connector.ts`)
-- Check HTTP endpoint reachable → `missing` vs `installed`
-- Check if models are pulled (`/api/tags`) → if empty, `installed` with message "No models pulled"
-- If models exist → `ready`
-- Show available models in the agent panel
+- `authMode: 'none'` — no login needed
+- `runner: 'http-local'` — check HTTP endpoint reachable via `GET http://localhost:11434/api/tags`
+- If endpoint unreachable → `missing` with message "Ollama not running. Start it or install from ollama.com"
+- If reachable but no models → `installed` with message "No models pulled — run `ollama pull qwen2.5-coder:7b`"
+- If reachable and models exist → `ready`
+- Store discovered model names in `OllamaStatus.availableModels` (new field, see type change below)
 
 ### Runner Detection
 
@@ -285,9 +310,14 @@ Show status-specific guidance messages:
 | `src/main/services/process-runner.ts` | Optional `checkWslAvailable()` |
 | `src/renderer/src/components/AgentPanel.tsx` | Status-specific messages |
 
+### Files Changed (Feature B) — additional
+
+| File | Change Type |
+|------|------------|
+| `src/shared/types.ts` | Add `availableModels?: string[]` to `OllamaStatus` |
+
 ### Files NOT Changed
 
-- `src/shared/types.ts` — `AgentStatus` already covers all states
 - `src/shared/ipc.ts` — no new IPC methods; existing `probeAgents` is sufficient
 - `src/main/services/workflow-engine.ts` — onboarding is independent of workflows
 
@@ -300,7 +330,7 @@ Features A and B are fully independent:
 - **A (continueTask)** touches: workflow engine, app controller, IPC, store, HandoffActions
 - **B (onboarding)** touches: connectors, process runner, AgentPanel
 
-The only shared file is `src/shared/types.ts`, and they add different things (A adds `ContinueTaskOptions`, B adds nothing).
+The shared file `src/shared/types.ts` is touched by both, but they add different things (A adds `ContinueTaskOptions`/`ActiveAgentRole`/`ResumableStage`, B adds `availableModels` to `OllamaStatus`). No conflict.
 
 They can be implemented in parallel or in any order.
 
@@ -317,11 +347,12 @@ They can be implemented in parallel or in any order.
 6. Typecheck + build pass
 
 ### Feature B Tests
-1. Unit test: Claude connector probe returns `needs-login` when auth fails
-2. Unit test: Codex connector probe checks `OPENAI_API_KEY`
-3. Unit test: Ollama connector discovers pulled models
-4. Renderer test: AgentPanel shows correct status message per state
-5. Typecheck + build pass
+1. Unit test: Claude connector deep probe returns `needs-login` when native auth check fails
+2. Unit test: Codex connector deep probe uses native login check (not OPENAI_API_KEY) when authMode is `native-login`
+3. Unit test: Gemini connector deep probe uses native login check (not GOOGLE_API_KEY) when authMode is `native-login`
+4. Unit test: Ollama connector discovers pulled models via `/api/tags` and populates `availableModels`
+5. Renderer test: AgentPanel shows correct status message per state
+6. Typecheck + build pass
 
 ### Manual Smoke Test
 1. Start a `code-review-fix-verify` workflow
