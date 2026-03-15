@@ -1,7 +1,7 @@
 # Design: continueTask Backend + Phase 3 Onboarding Hardening
 
 **Date:** 2026-03-15
-**Status:** Approved (pending spec review)
+**Status:** Approved (spec review passed with fixes applied)
 **Scope:** Two independent features that share a milestone but touch different files.
 
 ---
@@ -24,22 +24,35 @@ Phase 2 HandoffActions buttons are disabled because they called `startWorkflow()
 
 #### `src/shared/types.ts`
 
-Add new type:
+Add new types:
 
 ```typescript
+// Extract the 6 roles that can actively run agent steps.
+// Used by both WorkflowEngine.runStep() and ContinueTaskOptions.
+// Excludes 'compare-only', 'developer', and 'off' which are profile-level
+// settings, not step-execution roles.
+export type ActiveAgentRole = 'coder' | 'reviewer' | 'tester' | 'architect' | 'planner' | 'monitor';
+
+// Resumable stages — the stages that appear as actual runStep() targets
+// in built-in workflows. Terminal states (brief, promote, done, error)
+// and the transition label 'findings' are not resumable.
+export type ResumableStage = 'code' | 'review' | 'fix' | 'verify';
+
 export type ContinueTaskOptions =
   | {
       mode: 'resume';
-      fromStage: TaskStage;
+      fromStage: ResumableStage;
     }
   | {
       mode: 'single-step';
       stage: TaskStage;
       agentId: AgentId;
-      role: 'coder' | 'reviewer' | 'tester' | 'architect' | 'planner' | 'monitor';
+      role: ActiveAgentRole;
       prompt?: string;
     };
 ```
+
+Also update `WorkflowEngine.runStep()` signature to use `ActiveAgentRole` instead of its current inline union, keeping them in sync.
 
 No changes to `StartWorkflowInput`.
 
@@ -80,7 +93,9 @@ async continue(
 4. Each workflow runner gets a `fromStage` parameter; it skips steps whose stage is before `fromStage` in the stage sequence
 5. After all remaining steps complete, set `task.stage = 'promote'` (same as `start()`)
 
-Stage ordering for skip logic: `['code', 'review', 'findings', 'fix', 'verify']`
+Stage ordering for skip logic uses the `ResumableStage` type: `['code', 'review', 'fix', 'verify']`. The `'findings'` label is not a runStep target in any existing workflow — it is excluded. Terminal stages (`'brief'`, `'promote'`, `'done'`, `'error'`) are rejected by the `ResumableStage` type at compile time.
+
+Resume mode is supported for `code-review-fix-verify` and `code-gemini-compare-codex-review` (which share the same stage flow). The `architecture-compare` and `away-monitor` workflows do not support resume — if attempted, `continue()` throws `'Resume not supported for workflow ${workflowId}'`.
 
 **Single-step mode behavior:**
 1. Build a `WorkflowContext` using the existing task
@@ -102,11 +117,21 @@ Stage ordering for skip logic: `['code', 'review', 'findings', 'fix', 'verify']`
 
 Add method:
 
+Add a `private readonly activeContinuations = new Set<string>();` field to `AppController`.
+
 ```typescript
 async continueTask(taskId: string, options: ContinueTaskOptions): Promise<WorkbenchSnapshot> {
   const task = this.snapshot.tasks.find(t => t.id === taskId);
   if (!task) throw new Error('Task not found.');
   if (!this.snapshot.project) throw new Error('No project selected.');
+  if (!this.snapshot.project.isGitRepo) throw new Error('Project is not a git repository.');
+
+  // Concurrency guard — prevent two continuations on the same worktree
+  if (this.activeContinuations.has(taskId)) {
+    throw new Error('Task is already being continued. Wait for the current step to finish.');
+  }
+  this.activeContinuations.add(taskId);
+  try {
 
   // Validate worktree still exists
   if (!fs.existsSync(task.worktreePath)) {
@@ -129,6 +154,9 @@ async continueTask(taskId: string, options: ContinueTaskOptions): Promise<Workbe
   });
   this.emitState();
   return this.snapshot;
+} finally {
+  this.activeContinuations.delete(taskId);
+}
 }
 ```
 
@@ -152,7 +180,7 @@ Re-enable buttons. Each button calls `continueTask` with the appropriate single-
 |--------|---------|-------|------|
 | Send to Claude for fix | `claude` | `fix` | `coder` |
 | Ask Codex to verify | `codex` | `verify` | `tester` |
-| Ask Gemini for review | `gemini` | `review` | `architect` |
+| Ask Gemini for review | `gemini` | `review` | `architect` | *Gemini reviews as `architect` by convention — matches `code-gemini-compare-codex-review` workflow* |
 
 "Send to Claude for fix" includes a prompt override built from `formatFindingsBrief(task.id, findings)`.
 
@@ -175,8 +203,9 @@ Re-enable buttons. Each button calls `continueTask` with the appropriate single-
 
 1. **Task worktree deleted:** `continueTask` checks `fs.existsSync(task.worktreePath)` and throws if missing.
 2. **Task already in `done` or `error` state:** Allowed — user may want to retry or extend a failed/completed task.
-3. **Resume from a stage the workflow doesn't have:** The skip logic silently skips all steps and sets stage to `promote`.
-4. **Concurrent continuation:** Not guarded — same as `startWorkflow` today. Future work if needed.
+3. **Resume from invalid stage:** `ResumableStage` type rejects terminal stages at compile time. Non-resumable workflows (`architecture-compare`, `away-monitor`) throw at runtime.
+4. **Concurrent continuation:** Guarded by `activeContinuations` Set in AppController. Second call on same taskId throws immediately.
+5. **Project not a git repo:** `continueTask` checks `isGitRepo` like `startWorkflow` does.
 
 ---
 
