@@ -349,3 +349,142 @@ select {
   text-align: center;
   color: #4c5f7c;
 }
+
+.artifact-viewer {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(18, 32, 51, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.artifact-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #f5f7fa;
+  border-bottom: 1px solid rgba(18, 32, 51, 0.08);
+  font-size: 0.85rem;
+}
+
+.artifact-agent {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.artifact-role {
+  background: #e0e9f5;
+  padding: 0.15rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.artifact-time {
+  color: #4c5f7c;
+  margin-left: auto;
+}
+
+.artifact-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(18, 32, 51, 0.08);
+  overflow-x: auto;
+}
+
+.artifact-tab {
+  padding: 0.6rem 1rem;
+  border-radius: 0;
+  background: transparent;
+  color: #4c5f7c;
+  font-size: 0.85rem;
+  border-bottom: 2px solid transparent;
+}
+
+.artifact-tab:hover {
+  background: #f5f7fa;
+  color: #122033;
+}
+
+.artifact-tab-active {
+  color: #1955d6;
+  border-bottom-color: #1955d6;
+  background: transparent;
+}
+
+.artifact-tab-content {
+  padding: 1rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.artifact-pre {
+  background: #f5f7fa;
+  padding: 0.75rem;
+  border-radius: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.artifact-stderr {
+  background: #fff5f5;
+  color: #8b1a1a;
+}
+
+.artifact-overview h4 {
+  margin: 0.75rem 0 0.35rem;
+}
+
+.artifact-overview h4:first-child {
+  margin-top: 0;
+}
+
+.finding-location {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: #4c5f7c;
+}
+
+.finding-action {
+  font-style: italic;
+  color: #1955d6;
+  margin: 0.25rem 0 0;
+}
+
+.command-run {
+  margin-bottom: 1rem;
+  border: 1px solid rgba(18, 32, 51, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.command-line {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  background: #101826;
+  color: #d8e1f0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+
+.command-exit {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  margin: 0.35rem 0.75rem;
+  border-radius: 6px;
+}
+
+.exit-ok {
+  background: #e6ffe6;
+  color: #1a5c1a;
+}
+
+.exit-fail {
+  background: #ffe6e6;
+  color: #8b1a1a;
+}
