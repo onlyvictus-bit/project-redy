@@ -171,6 +171,12 @@ export class WorkflowEngine {
       this.activeControllers.delete(task.id);
     }
 
+    if (context.task.stage === 'cancelled') {
+      context.task.updatedAt = new Date().toISOString();
+      updateTask(context.task);
+      return context.task;
+    }
+
     context.task.updatedAt = new Date().toISOString();
     updateTask(context.task);
     return context.task;
@@ -294,6 +300,14 @@ export class WorkflowEngine {
       context.task.findings = this.mergeFindings(context.task.findings, artifact.findings);
       context.task.artifacts.unshift(artifact);
       context.appendArtifact(artifact);
+
+      // If the signal fired while this step was completing, treat the step as cancelled.
+      // This closes the window where a successful exit races with an abort signal.
+      if (signal?.aborted) {
+        step.status = 'cancelled';
+        context.task.stage = 'cancelled';
+        context.task.errorMessage = 'Workflow was cancelled by the user.';
+      }
     } catch (error) {
       const wasCancelled = signal?.aborted ?? false;
       step.status = wasCancelled ? 'cancelled' : 'failed';
