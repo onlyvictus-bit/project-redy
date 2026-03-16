@@ -62,7 +62,8 @@ const mocks = vi.hoisted(() => {
       saveAgentProfile: vi.fn(),
       saveProject: vi.fn(),
       saveTask: vi.fn(),
-      appendArtifact: vi.fn()
+      appendArtifact: vi.fn(),
+      appendRunEvent: vi.fn()
     },
     ollamaManager: {
       probe: vi.fn().mockResolvedValue({

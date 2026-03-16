@@ -23,6 +23,7 @@ interface WorkflowContext {
   task: TaskRun;
   updateTask: (task: TaskRun) => void;
   appendArtifact: (artifact: ArtifactBundle) => void;
+  recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void;
 }
 
 const RESUMABLE_STAGE_ORDER: ResumableStage[] = ['code', 'review', 'fix', 'verify'];
@@ -39,7 +40,7 @@ export class WorkflowEngine {
     this.activeControllers.get(taskId)?.abort();
   }
 
-  async start(project: ProjectRef, input: StartWorkflowInput, updateTask: (task: TaskRun) => void, appendArtifact: (artifact: ArtifactBundle) => void): Promise<TaskRun> {
+  async start(project: ProjectRef, input: StartWorkflowInput, updateTask: (task: TaskRun) => void, appendArtifact: (artifact: ArtifactBundle) => void, recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void): Promise<TaskRun> {
     const taskId = uuid();
     const workspace = await this.workspaceManager.createTaskWorkspace(project, taskId, input.brief);
     const task: TaskRun = {
@@ -69,7 +70,8 @@ export class WorkflowEngine {
       project,
       task,
       updateTask,
-      appendArtifact
+      appendArtifact,
+      recordEvent
     };
 
     const controller = new AbortController();
@@ -114,13 +116,15 @@ export class WorkflowEngine {
     task: TaskRun,
     options: ContinueTaskOptions,
     updateTask: (task: TaskRun) => void,
-    appendArtifact: (artifact: ArtifactBundle) => void
+    appendArtifact: (artifact: ArtifactBundle) => void,
+    recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void
   ): Promise<TaskRun> {
     const context: WorkflowContext = {
       project,
       task,
       updateTask,
-      appendArtifact
+      appendArtifact,
+      recordEvent
     };
 
     const controller = new AbortController();
@@ -271,6 +275,8 @@ export class WorkflowEngine {
     context.task.updatedAt = new Date().toISOString();
     context.updateTask(context.task);
 
+    context.recordEvent?.(context.task.id, 'step-started', { stage, agentId, stepId: step.id });
+
     try {
       const beforeDiff = enforceReadOnly ? await this.workspaceManager.getDiff(context.task, context.project) : '';
       const artifact = await connector.runJob({
@@ -307,6 +313,9 @@ export class WorkflowEngine {
         step.status = 'cancelled';
         context.task.stage = 'cancelled';
         context.task.errorMessage = 'Workflow was cancelled by the user.';
+        context.recordEvent?.(context.task.id, 'step-cancelled', { stage, agentId, stepId: step.id });
+      } else {
+        context.recordEvent?.(context.task.id, 'step-completed', { stage, agentId, stepId: step.id, exitCode: artifact.exitCode ?? 0 });
       }
     } catch (error) {
       const wasCancelled = signal?.aborted ?? false;
@@ -322,6 +331,11 @@ export class WorkflowEngine {
         context.task.findings = this.mergeFindings(context.task.findings, error.artifact.findings);
         context.task.artifacts.unshift(error.artifact);
         context.appendArtifact(error.artifact);
+      }
+      if (wasCancelled) {
+        context.recordEvent?.(context.task.id, 'step-cancelled', { stage, agentId, stepId: step.id });
+      } else {
+        context.recordEvent?.(context.task.id, 'step-failed', { stage, agentId, stepId: step.id, error: context.task.errorMessage ?? '' });
       }
     }
 

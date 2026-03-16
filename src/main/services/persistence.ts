@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import Database from 'better-sqlite3';
 
@@ -160,6 +161,29 @@ export class PersistenceService {
       });
   }
 
+  appendRunEvent(taskId: string, eventType: string, payload: Record<string, unknown>): void {
+    this.db.prepare(`
+      INSERT INTO run_events (id, task_id, event_type, payload_json, recorded_at)
+      VALUES (@id, @taskId, @eventType, @payload, CURRENT_TIMESTAMP)
+    `).run({
+      id: randomUUID(),
+      taskId,
+      eventType,
+      payload: JSON.stringify(payload)
+    });
+  }
+
+  loadRunEvents(taskId: string): Array<{ eventType: string; payload: Record<string, unknown>; recordedAt: string }> {
+    const rows = this.db.prepare(
+      'SELECT event_type, payload_json, recorded_at FROM run_events WHERE task_id = ? ORDER BY recorded_at ASC'
+    ).all(taskId) as Array<{ event_type: string; payload_json: string; recorded_at: string }>;
+    return rows.map((row) => ({
+      eventType: row.event_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      recordedAt: row.recorded_at
+    }));
+  }
+
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS projects (
@@ -196,6 +220,15 @@ export class PersistenceService {
         artifact_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS run_events (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS run_events_task_id ON run_events(task_id);
     `);
 
     this.ensureColumn('projects', 'archive_path', 'ALTER TABLE projects ADD COLUMN archive_path TEXT');

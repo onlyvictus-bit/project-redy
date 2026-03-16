@@ -131,6 +131,16 @@ export class AppController extends EventEmitter {
         task.errorMessage = 'Task was interrupted when the app closed. You can resume from the last completed step.';
         task.updatedAt = now;
         this.persistence.saveTask(task);
+        this.persistence.appendRunEvent(task.id, 'workflow-interrupted', {
+          stage: task.stage,
+          interruptedAt: now
+        });
+        if (this.snapshot.project) {
+          this.projectArchive.appendEvent(this.snapshot.project, 'task-interrupted', {
+            taskId: task.id,
+            stage: task.stage
+          });
+        }
       }
     }
 
@@ -275,9 +285,13 @@ export class AppController extends EventEmitter {
       },
       (artifact) => {
         this.persistence.appendArtifact(artifact);
+      },
+      (taskId, eventType, payload) => {
+        this.persistence.appendRunEvent(taskId, eventType, payload);
       }
     );
 
+    this.persistence.appendRunEvent(task.id, 'workflow-finished', { stage: task.stage });
     this.upsertTask(task);
     this.projectArchive.appendEvent(this.snapshot.project, 'workflow-finished', {
       taskId: task.id,
@@ -315,6 +329,8 @@ export class AppController extends EventEmitter {
         throw new Error('Task worktree no longer exists. Cannot continue.');
       }
 
+      this.persistence.appendRunEvent(task.id, 'workflow-continued', { mode: options.mode });
+
       const updatedTask = await this.workflowEngine.continue(
         this.snapshot.project,
         task,
@@ -324,9 +340,13 @@ export class AppController extends EventEmitter {
         },
         (artifact) => {
           this.persistence.appendArtifact(artifact);
+        },
+        (taskId2, eventType, payload) => {
+          this.persistence.appendRunEvent(taskId2, eventType, payload);
         }
       );
 
+      this.persistence.appendRunEvent(updatedTask.id, 'workflow-continue-finished', { stage: updatedTask.stage });
       this.upsertTask(updatedTask);
       this.projectArchive.appendEvent(this.snapshot.project, 'task-continued', {
         taskId: updatedTask.id,
