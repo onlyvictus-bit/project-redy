@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
@@ -13,6 +14,7 @@ import {
   type ProjectRef,
   type RunnerKind,
   type StartWorkflowInput,
+  type TerminalSession,
   type WorkbenchSnapshot
 } from '@shared/types';
 
@@ -37,6 +39,7 @@ export class AppController extends EventEmitter {
   private readonly workflowEngine: WorkflowEngine;
   private snapshot: WorkbenchSnapshot;
   private readonly activeContinuations = new Set<string>();
+  private readonly activeAuthSessions = new Set<AgentId>();
 
   constructor() {
     super();
@@ -53,6 +56,13 @@ export class AppController extends EventEmitter {
       gemini: createConnector({ ...mergedAgents.gemini }, this.processRunner, this.ollamaManager),
       ollama: createConnector({ ...mergedAgents.ollama }, this.processRunner, this.ollamaManager)
     };
+
+    // Restore the Ollama model the user last selected so runJob picks it up without
+    // re-selection after a restart. We read from mergedAgents (the persisted value)
+    // rather than from the connector profile because createConnector may not propagate it.
+    if (mergedAgents.ollama.selectedModel) {
+      this.ollamaManager.restoreActiveModel(mergedAgents.ollama.selectedModel);
+    }
 
     const project = this.persistence.loadLatestProject();
     this.snapshot = {
@@ -81,10 +91,50 @@ export class AppController extends EventEmitter {
       }
       this.emit('terminal-data', payload);
     });
+
+    this.terminalManager.on('exit', (payload: { sessionId: string }) => {
+      this.snapshot.terminals = this.terminalManager.list();
+      this.emitState();
+      this.emit('terminal-exit', payload);
+    });
   }
 
   async bootstrap(): Promise<WorkbenchSnapshot> {
-    await this.probeAgents();
+    // Re-resolve the runner for the persisted project so connectors are on the right
+    // runner even when WSL availability has changed since the last session.
+    if (this.snapshot.project) {
+      const resolved = await this.resolveAutoRunner(this.snapshot.project.runnerPreference);
+      this.snapshot.project = { ...this.snapshot.project, resolvedRunner: resolved };
+      this.persistence.saveProject(this.snapshot.project);
+      for (const connector of Object.values(this.connectors)) {
+        if (connector.profile.id !== 'ollama') {
+          connector.profile.runner = resolved;
+          this.persistence.saveAgentProfile(connector.profile);
+        }
+      }
+    }
+
+    // Mark tasks that were mid-run when the app last closed as interrupted.
+    // Any step still in 'running' status means the process was never cleaned up.
+    for (const task of this.snapshot.tasks) {
+      const hasRunningStep = task.steps.some((s) => s.status === 'running');
+      if (hasRunningStep) {
+        const now = new Date().toISOString();
+        for (const step of task.steps) {
+          if (step.status === 'running') {
+            step.status = 'failed';
+            step.completedAt = now;
+            step.summary = 'Interrupted: app was closed during this step.';
+          }
+        }
+        task.stage = 'error';
+        task.errorMessage = 'Task was interrupted when the app closed. You can resume from the last completed step.';
+        task.updatedAt = now;
+        this.persistence.saveTask(task);
+      }
+    }
+
+    await this.probeAgents(true);
     return this.snapshot;
   }
 
@@ -98,10 +148,23 @@ export class AppController extends EventEmitter {
     }
 
     const runnerPreference = this.snapshot.project?.runnerPreference ?? 'auto';
-    const project = await this.workspaceManager.inspectProject(result.filePaths[0], runnerPreference);
+    const resolvedRunner = await this.resolveAutoRunner(runnerPreference);
+    const project = await this.workspaceManager.inspectProject(result.filePaths[0], runnerPreference, resolvedRunner);
+    this.terminalManager.stopAll();
+    this.snapshot.terminals = [];
     this.snapshot.project = project;
     this.snapshot.tasks = this.persistence.loadTasks(project.id);
     this.persistence.saveProject(project);
+
+    // Sync the resolved runner to CLI connectors so they probe/execute on the correct runner.
+    if (project.resolvedRunner) {
+      for (const connector of Object.values(this.connectors)) {
+        if (connector.profile.id !== 'ollama') {
+          connector.profile.runner = project.resolvedRunner;
+          this.persistence.saveAgentProfile(connector.profile);
+        }
+      }
+    }
     this.snapshot.archive = project.archiveEnabled
       ? this.projectArchive.ensureProject(project)
       : this.projectArchive.getArchiveSummary(project);
@@ -126,14 +189,17 @@ export class AppController extends EventEmitter {
       throw new Error('Select a project before choosing a runner.');
     }
 
+    const resolvedRunner = await this.resolveAutoRunner(runnerPreference);
+
     this.snapshot.project = {
       ...this.snapshot.project,
-      runnerPreference
+      runnerPreference,
+      resolvedRunner
     };
 
     for (const connector of Object.values(this.connectors)) {
       if (connector.profile.id !== 'ollama') {
-        connector.profile.runner = runnerPreference === 'auto' ? 'windows' : runnerPreference;
+        connector.profile.runner = resolvedRunner;
         this.persistence.saveAgentProfile(connector.profile);
       }
     }
@@ -262,6 +328,22 @@ export class AppController extends EventEmitter {
       throw new Error('Task or project not found.');
     }
 
+    if (action === 'open-task-branch') {
+      const result = await shell.openPath(task.worktreePath);
+      if (result) {
+        throw new Error(result);
+      }
+      this.pushNotification(`Opened worktree for task ${task.id.slice(0, 8)}.`);
+      this.emitState();
+      return this.snapshot;
+    }
+
+    if (action === 'keep-worktree') {
+      this.pushNotification(`Worktree kept for task ${task.id.slice(0, 8)}.`);
+      this.emitState();
+      return this.snapshot;
+    }
+
     await this.workspaceManager.promoteTask(task, project, action);
     task.approvalState = 'approved';
     task.stage = 'done';
@@ -276,10 +358,90 @@ export class AppController extends EventEmitter {
     return this.snapshot;
   }
 
+  async startAgentAuth(agentId: AgentId): Promise<string> {
+    const connector = this.connectors[agentId];
+    if (!connector.getAuthLaunchSpec) {
+      throw new Error(`${agentId} does not support in-app authentication.`);
+    }
+
+    // Guard against duplicate auth sessions for the same agent.
+    if (this.activeAuthSessions.has(agentId)) {
+      const existing = this.snapshot.terminals.find((t) => t.agentId === agentId);
+      if (existing) return existing.id;
+      throw new Error(`Authentication for ${connector.profile.displayName} is already in progress.`);
+    }
+
+    this.activeAuthSessions.add(agentId);
+    const spec = connector.getAuthLaunchSpec();
+    let session: TerminalSession;
+    try {
+      session = this.terminalManager.startRaw(agentId, spec, `Connect ${connector.profile.displayName}`);
+    } catch (error) {
+      this.activeAuthSessions.delete(agentId);
+      throw error;
+    }
+
+    if (this.snapshot.project) {
+      this.projectArchive.saveTerminalSession(this.snapshot.project, session);
+    }
+
+    this.snapshot.terminals = this.terminalManager.list();
+    this.emitState();
+
+    // Re-probe after auth PTY exits so the agent card updates automatically.
+    const onExit = async (payload: { sessionId: string }) => {
+      if (payload.sessionId === session.id) {
+        this.terminalManager.off('exit', onExit);
+        this.activeAuthSessions.delete(agentId);
+        await this.probeAgents(true);
+        // Only patch Claude permissions when the login actually succeeded.
+        if (agentId === 'claude' && this.snapshot.agents.claude.status === 'ready') {
+          this.patchClaudePermissions();
+        }
+      }
+    };
+    this.terminalManager.on('exit', onExit);
+
+    return session.id;
+  }
+
+  private patchClaudePermissions(): void {
+    const dir = path.join(os.homedir(), '.claude');
+    const settingsPath = path.join(dir, 'settings.json');
+    try {
+      let existing: Record<string, unknown> = {};
+      if (fs.existsSync(settingsPath)) {
+        existing = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+        fs.copyFileSync(settingsPath, `${settingsPath}.bak.${Date.now()}`);
+      }
+      fs.mkdirSync(dir, { recursive: true });
+      const permissions = (existing.permissions ?? {}) as Record<string, unknown>;
+      const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
+      for (const pattern of ['Bash(*)', 'Read(*)', 'Write(*)', 'Edit(*)']) {
+        if (!allow.includes(pattern)) allow.push(pattern);
+      }
+      permissions.allow = allow;
+      existing.permissions = permissions;
+      fs.writeFileSync(settingsPath, JSON.stringify(existing, null, 2), 'utf8');
+    } catch {
+      // Non-fatal — patching is best-effort.
+    }
+  }
+
   async setOllamaRole(role: AgentRole, model?: string): Promise<WorkbenchSnapshot> {
     this.snapshot.ollama = await this.ollamaManager.setRole(role, model);
     this.connectors.ollama.profile.role = role;
-    this.snapshot.agents.ollama = this.connectors.ollama.profile;
+    if (model) {
+      // Persist the selected model so it survives app restart.
+      this.connectors.ollama.profile.selectedModel = model;
+    }
+    const result = await this.connectors.ollama.probe();
+    // Explicitly stamp role (and selectedModel) so they survive probe.
+    this.snapshot.agents.ollama = {
+      ...result.profile,
+      role,
+      ...(model ? { selectedModel: model } : {})
+    };
     this.persistence.saveAgentProfile(this.snapshot.agents.ollama);
     this.emitState();
     return this.snapshot;
@@ -287,6 +449,10 @@ export class AppController extends EventEmitter {
 
   async shutdownOllama(): Promise<WorkbenchSnapshot> {
     this.snapshot.ollama = await this.ollamaManager.shutdownIfManaged();
+    this.connectors.ollama.profile.role = 'off';
+    const result = await this.connectors.ollama.probe();
+    this.snapshot.agents.ollama = { ...result.profile, role: 'off' };
+    this.persistence.saveAgentProfile(this.snapshot.agents.ollama);
     this.emitState();
     return this.snapshot;
   }
@@ -333,6 +499,9 @@ export class AppController extends EventEmitter {
       ? this.projectArchive.ensureProject(project)
       : this.projectArchive.getArchiveSummary(project);
     if (archive) {
+      if (!fs.existsSync(archive.path)) {
+        throw new Error('Archive folder has not been created yet. Enable the project archive first.');
+      }
       const result = await shell.openPath(archive.path);
       if (result) {
         throw new Error(result);
@@ -354,6 +523,13 @@ export class AppController extends EventEmitter {
     if (this.snapshot.project) {
       this.projectArchive.saveTask(this.snapshot.project, task);
     }
+  }
+
+  private async resolveAutoRunner(preference: RunnerKind | 'auto'): Promise<RunnerKind> {
+    if (preference === 'auto') {
+      return (await this.processRunner.checkWslAvailable()) ? 'wsl' : 'windows';
+    }
+    return preference;
   }
 
   private pushNotification(message: string): void {

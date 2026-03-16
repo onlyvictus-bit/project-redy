@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+const MAX_TERMINAL_LINES = 5000;
+
 import type {
   AgentId,
   AgentRole,
@@ -29,6 +31,7 @@ interface WorkbenchState {
   startWorkflow: (input: StartWorkflowInput) => Promise<void>;
   promoteTask: (taskId: string, action: PromotionAction) => Promise<void>;
   continueTask: (taskId: string, options: ContinueTaskOptions) => Promise<void>;
+  startAgentAuth: (agentId: AgentId) => Promise<string | undefined>;
   setOllamaRole: (role: AgentRole, model?: string) => Promise<void>;
   shutdownOllama: () => Promise<void>;
   setProjectArchiveEnabled: (enabled: boolean) => Promise<void>;
@@ -66,14 +69,22 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   },
   applySnapshot: (snapshot) => set({ snapshot }),
   appendTerminalData: (sessionId, data) =>
-    set((state) => ({
-      terminalBuffers: {
-        ...state.terminalBuffers,
-        [sessionId]: `${state.terminalBuffers[sessionId] ?? ''}${data}`
-      }
-    })),
+    set((state) => {
+      const current = state.terminalBuffers[sessionId] ?? '';
+      const combined = `${current}${data}`;
+      const lines = combined.split('\n');
+      const trimmed = lines.length > MAX_TERMINAL_LINES ? lines.slice(-MAX_TERMINAL_LINES).join('\n') : combined;
+      return {
+        terminalBuffers: {
+          ...state.terminalBuffers,
+          [sessionId]: trimmed
+        }
+      };
+    }),
   selectProject: async () => {
-    await runAction(set, () => window.workbench.selectProject(), () => undefined);
+    await runAction(set, () => window.workbench.selectProject(), () => {
+      set({ terminalBuffers: {} });
+    });
   },
   probeAgents: async (deep) => {
     await runAction(set, () => window.workbench.probeAgents(deep), (snapshot) => set({ snapshot }));
@@ -92,7 +103,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
     return session;
   },
   stopTerminal: async (sessionId) => {
-    await runAction(set, () => window.workbench.stopTerminal(sessionId), () => undefined);
+    await runAction(set, () => window.workbench.stopTerminal(sessionId), () => {
+      set((state) => {
+        const { [sessionId]: _removed, ...rest } = state.terminalBuffers;
+        return { terminalBuffers: rest };
+      });
+    });
   },
   sendTerminalInput: async (sessionId, input) => {
     await runAction(set, () => window.workbench.sendTerminalInput(sessionId, input), () => undefined);
@@ -105,6 +121,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   },
   continueTask: async (taskId, options) => {
     await runAction(set, () => window.workbench.continueTask(taskId, options), (snapshot) => set({ snapshot }));
+  },
+  startAgentAuth: async (agentId) => {
+    let sessionId: string | undefined;
+    await runAction(set, () => window.workbench.startAgentAuth(agentId), (id) => { sessionId = id; });
+    return sessionId;
   },
   setOllamaRole: async (role, model) => {
     await runAction(set, () => window.workbench.setOllamaRole(role, model), (snapshot) => set({ snapshot }));
