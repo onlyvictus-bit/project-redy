@@ -20,13 +20,17 @@ interface ArtifactViewerProps {
 }
 
 export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
-  const [activeTab, setActiveTab] = useState<ArtifactTab>('overview');
+  // Failed artifacts open directly on the Logs tab so stderr is immediately visible.
+  const [activeTab, setActiveTab] = useState<ArtifactTab>(artifact.exitCode !== 0 ? 'logs' : 'overview');
 
   return (
     <div className="artifact-viewer">
       <div className="artifact-header">
         <span className="artifact-agent">{artifact.agentId}</span>
         <span className="artifact-role">{artifact.role}</span>
+        {artifact.exitCode !== 0 ? (
+          <span className="artifact-exit-badge artifact-exit-failed">exit {artifact.exitCode ?? '?'}</span>
+        ) : null}
         <span className="artifact-time">{new Date(artifact.createdAt).toLocaleTimeString()}</span>
       </div>
 
@@ -63,10 +67,21 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
 
         {activeTab === 'logs' && (
           <div className="artifact-logs">
-            <h4>stdout</h4>
-            <pre className="artifact-pre">{artifact.stdout || '(empty)'}</pre>
-            <h4>stderr</h4>
-            <pre className="artifact-pre artifact-stderr">{artifact.stderr || '(empty)'}</pre>
+            {artifact.exitCode !== 0 ? (
+              <>
+                <h4>stderr</h4>
+                <pre className="artifact-pre artifact-stderr">{artifact.stderr || '(empty)'}</pre>
+                <h4>stdout</h4>
+                <pre className="artifact-pre">{artifact.stdout || '(empty)'}</pre>
+              </>
+            ) : (
+              <>
+                <h4>stdout</h4>
+                <pre className="artifact-pre">{artifact.stdout || '(empty)'}</pre>
+                <h4>stderr</h4>
+                <pre className="artifact-pre artifact-stderr">{artifact.stderr || '(empty)'}</pre>
+              </>
+            )}
           </div>
         )}
 
