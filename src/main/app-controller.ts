@@ -288,6 +288,15 @@ export class AppController extends EventEmitter {
     return this.snapshot;
   }
 
+  cancelWorkflow(taskId: string): WorkbenchSnapshot {
+    const task = this.snapshot.tasks.find((t) => t.id === taskId);
+    if (!task) {
+      throw new Error('Task not found.');
+    }
+    this.workflowEngine.cancel(taskId);
+    return this.snapshot;
+  }
+
   async continueTask(taskId: string, options: ContinueTaskOptions): Promise<WorkbenchSnapshot> {
     const task = this.snapshot.tasks.find((candidate) => candidate.id === taskId);
     if (!task) {

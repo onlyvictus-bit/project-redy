@@ -28,7 +28,8 @@ export type TaskStage =
   | 'verify'
   | 'promote'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'cancelled';
 export type ResumableStage = 'code' | 'review' | 'fix' | 'verify';
 export type ApprovalState = 'pending' | 'approved' | 'rejected' | 'not-required';
 export type PromotionAction = 'apply-to-main' | 'keep-worktree' | 'open-task-branch';
@@ -118,7 +119,7 @@ export interface TaskStepRecord {
   agentId: AgentId;
   startedAt: string;
   completedAt?: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   summary?: string;
 }
 

@@ -28,10 +28,16 @@ interface WorkflowContext {
 const RESUMABLE_STAGE_ORDER: ResumableStage[] = ['code', 'review', 'fix', 'verify'];
 
 export class WorkflowEngine {
+  private readonly activeControllers = new Map<string, AbortController>();
+
   constructor(
     private readonly workspaceManager: WorkspaceManager,
     private readonly connectors: () => Record<AgentId, AgentConnector>
   ) {}
+
+  cancel(taskId: string): void {
+    this.activeControllers.get(taskId)?.abort();
+  }
 
   async start(project: ProjectRef, input: StartWorkflowInput, updateTask: (task: TaskRun) => void, appendArtifact: (artifact: ArtifactBundle) => void): Promise<TaskRun> {
     const taskId = uuid();
@@ -66,21 +72,33 @@ export class WorkflowEngine {
       appendArtifact
     };
 
-    switch (input.workflowId) {
-      case 'code-review-fix-verify':
-        await this.runCodeReviewFixVerify(context);
-        break;
-      case 'code-gemini-compare-codex-review':
-        await this.runCodeGeminiCodex(context);
-        break;
-      case 'architecture-compare':
-        await this.runArchitectureCompare(context);
-        break;
-      case 'away-monitor':
-        await this.runAwayMonitor(context);
-        break;
-      default:
-        throw new Error(`Unsupported workflow ${String(input.workflowId)}`);
+    const controller = new AbortController();
+    this.activeControllers.set(taskId, controller);
+    try {
+      switch (input.workflowId) {
+        case 'code-review-fix-verify':
+          await this.runCodeReviewFixVerify(context, undefined, controller.signal);
+          break;
+        case 'code-gemini-compare-codex-review':
+          await this.runCodeGeminiCodex(context, undefined, controller.signal);
+          break;
+        case 'architecture-compare':
+          await this.runArchitectureCompare(context, controller.signal);
+          break;
+        case 'away-monitor':
+          await this.runAwayMonitor(context, controller.signal);
+          break;
+        default:
+          throw new Error(`Unsupported workflow ${String(input.workflowId)}`);
+      }
+    } finally {
+      this.activeControllers.delete(taskId);
+    }
+
+    if (context.task.stage === 'cancelled') {
+      context.task.updatedAt = new Date().toISOString();
+      updateTask(context.task);
+      return context.task;
     }
 
     if (context.task.stage !== 'error' && context.task.stage !== 'done') {
@@ -105,46 +123,52 @@ export class WorkflowEngine {
       appendArtifact
     };
 
-    if (options.mode === 'resume') {
-      switch (task.workflowId) {
-        case 'code-review-fix-verify':
-          await this.runCodeReviewFixVerify(context, options.fromStage);
-          break;
-        case 'code-gemini-compare-codex-review':
-          await this.runCodeGeminiCodex(context, options.fromStage);
-          break;
-        default:
-          throw new Error(`Resume not supported for workflow ${task.workflowId}`);
-      }
-      if (context.task.stage !== 'error' && context.task.stage !== 'done') {
-        context.task.stage = 'promote';
-      }
-    } else {
-      const enforceReadOnly = options.role === 'reviewer' || options.role === 'tester' || options.role === 'monitor';
-      let prompt: string;
-      if (options.prompt) {
-        prompt = options.prompt;
+    const controller = new AbortController();
+    this.activeControllers.set(task.id, controller);
+    try {
+      if (options.mode === 'resume') {
+        switch (task.workflowId) {
+          case 'code-review-fix-verify':
+            await this.runCodeReviewFixVerify(context, options.fromStage, controller.signal);
+            break;
+          case 'code-gemini-compare-codex-review':
+            await this.runCodeGeminiCodex(context, options.fromStage, controller.signal);
+            break;
+          default:
+            throw new Error(`Resume not supported for workflow ${task.workflowId}`);
+        }
+        if (context.task.stage !== 'error' && context.task.stage !== 'done' && context.task.stage !== 'cancelled') {
+          context.task.stage = 'promote';
+        }
       } else {
-        switch (options.stage) {
-          case 'fix':
-            prompt = buildFixPrompt(task, task.findings);
-            break;
-          case 'review':
-          case 'verify': {
-            const diff = await this.workspaceManager.getDiff(task, project);
-            prompt = buildReviewPrompt(task, diff, options.agentId);
-            break;
-          }
-          case 'code':
-            prompt = buildCodingPrompt(task);
-            break;
-          default: {
-            const _exhaustive: never = options.stage;
-            throw new Error(`No built-in prompt for stage ${String(_exhaustive)}`);
+        const enforceReadOnly = options.role === 'reviewer' || options.role === 'tester' || options.role === 'monitor';
+        let prompt: string;
+        if (options.prompt) {
+          prompt = options.prompt;
+        } else {
+          switch (options.stage) {
+            case 'fix':
+              prompt = buildFixPrompt(task, task.findings);
+              break;
+            case 'review':
+            case 'verify': {
+              const diff = await this.workspaceManager.getDiff(task, project);
+              prompt = buildReviewPrompt(task, diff, options.agentId);
+              break;
+            }
+            case 'code':
+              prompt = buildCodingPrompt(task);
+              break;
+            default: {
+              const _exhaustive: never = options.stage;
+              throw new Error(`No built-in prompt for stage ${String(_exhaustive)}`);
+            }
           }
         }
+        await this.runStep(context, options.stage, options.agentId, prompt, options.role, enforceReadOnly, controller.signal);
       }
-      await this.runStep(context, options.stage, options.agentId, prompt, options.role, enforceReadOnly);
+    } finally {
+      this.activeControllers.delete(task.id);
     }
 
     context.task.updatedAt = new Date().toISOString();
@@ -152,45 +176,51 @@ export class WorkflowEngine {
     return context.task;
   }
 
-  private async runCodeReviewFixVerify(context: WorkflowContext, fromStage?: ResumableStage): Promise<void> {
+  private async runCodeReviewFixVerify(context: WorkflowContext, fromStage?: ResumableStage, signal?: AbortSignal): Promise<void> {
     const skip = fromStage ? RESUMABLE_STAGE_ORDER.indexOf(fromStage) : 0;
 
     if (skip <= 0) {
-      await this.runStep(context, 'code', 'claude', buildCodingPrompt(context.task), 'coder');
+      await this.runStep(context, 'code', 'claude', buildCodingPrompt(context.task), 'coder', false, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 1) {
       const diff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'review', 'codex', buildReviewPrompt(context.task, diff, 'codex'), 'reviewer', true);
+      await this.runStep(context, 'review', 'codex', buildReviewPrompt(context.task, diff, 'codex'), 'reviewer', true, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 2 && context.task.findings.length) {
-      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder');
+      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder', false, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 3) {
       const verifyDiff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'tester', true);
+      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'tester', true, signal);
     }
   }
 
-  private async runCodeGeminiCodex(context: WorkflowContext, fromStage?: ResumableStage): Promise<void> {
+  private async runCodeGeminiCodex(context: WorkflowContext, fromStage?: ResumableStage, signal?: AbortSignal): Promise<void> {
     const skip = fromStage ? RESUMABLE_STAGE_ORDER.indexOf(fromStage) : 0;
 
     if (skip <= 0) {
-      await this.runStep(context, 'code', 'claude', buildCodingPrompt(context.task), 'coder');
+      await this.runStep(context, 'code', 'claude', buildCodingPrompt(context.task), 'coder', false, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 1) {
       const diff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'review', 'gemini', buildReviewPrompt(context.task, diff, 'gemini'), 'architect', true);
+      await this.runStep(context, 'review', 'gemini', buildReviewPrompt(context.task, diff, 'gemini'), 'architect', true, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 2 && context.task.findings.length) {
-      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder');
+      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder', false, signal);
+      if (signal?.aborted) return;
     }
     if (skip <= 3) {
       const verifyDiff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'reviewer', true);
+      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'reviewer', true, signal);
     }
   }
 
-  private async runArchitectureCompare(context: WorkflowContext): Promise<void> {
+  private async runArchitectureCompare(context: WorkflowContext, signal?: AbortSignal): Promise<void> {
     const agents: AgentId[] = ['claude', 'codex', 'gemini', 'ollama'];
     for (const agentId of agents) {
       // CLI agents always run as read-only planner to prevent unexpected edits during a compare workflow.
@@ -198,15 +228,17 @@ export class WorkflowEngine {
       const role: ActiveAgentRole = agentId === 'ollama'
         ? this.resolveActiveRole(this.connectors().ollama.profile.role, 'architect')
         : 'planner';
-      await this.runStep(context, 'review', agentId, buildArchitecturePrompt(context.task, agentId), role, true);
+      await this.runStep(context, 'review', agentId, buildArchitecturePrompt(context.task, agentId), role, true, signal);
+      if (signal?.aborted) return;
     }
     context.task.approvalState = 'not-required';
     context.task.stage = 'done';
   }
 
-  private async runAwayMonitor(context: WorkflowContext): Promise<void> {
+  private async runAwayMonitor(context: WorkflowContext, signal?: AbortSignal): Promise<void> {
     const role = this.resolveActiveRole(this.connectors().ollama.profile.role, 'monitor');
-    await this.runStep(context, 'review', 'ollama', buildMonitorPrompt(context.task), role);
+    await this.runStep(context, 'review', 'ollama', buildMonitorPrompt(context.task), role, false, signal);
+    if (signal?.aborted) return;
     context.task.approvalState = 'not-required';
     context.task.stage = 'done';
   }
@@ -217,7 +249,8 @@ export class WorkflowEngine {
     agentId: AgentId,
     prompt: string,
     role: ActiveAgentRole,
-    enforceReadOnly = false
+    enforceReadOnly = false,
+    signal?: AbortSignal
   ): Promise<void> {
     const connector = this.connectors()[agentId];
     const step: TaskStepRecord = {
@@ -240,7 +273,8 @@ export class WorkflowEngine {
         runner: connector.profile.runner,
         taskId: context.task.id,
         stepId: step.id,
-        role
+        role,
+        signal
       });
       const afterDiff = enforceReadOnly ? await this.workspaceManager.getDiff(context.task, context.project) : '';
 
@@ -261,10 +295,13 @@ export class WorkflowEngine {
       context.task.artifacts.unshift(artifact);
       context.appendArtifact(artifact);
     } catch (error) {
-      step.status = 'failed';
+      const wasCancelled = signal?.aborted ?? false;
+      step.status = wasCancelled ? 'cancelled' : 'failed';
       step.completedAt = new Date().toISOString();
-      context.task.stage = 'error';
-      context.task.errorMessage = error instanceof Error ? error.message : String(error);
+      context.task.stage = wasCancelled ? 'cancelled' : 'error';
+      context.task.errorMessage = wasCancelled
+        ? 'Workflow was cancelled by the user.'
+        : (error instanceof Error ? error.message : String(error));
       if (error instanceof ConnectorJobError) {
         step.summary = error.artifact.summary;
         context.task.summary = error.artifact.summary;

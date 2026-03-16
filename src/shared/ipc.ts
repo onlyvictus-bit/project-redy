@@ -22,8 +22,10 @@ export interface WorkbenchApi {
   sendTerminalInput: (sessionId: string, input: string) => Promise<void>;
   resizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
   startWorkflow: (input: StartWorkflowInput) => Promise<WorkbenchSnapshot>;
+  cancelWorkflow: (taskId: string) => Promise<WorkbenchSnapshot>;
   promoteTask: (taskId: string, action: PromotionAction) => Promise<WorkbenchSnapshot>;
   continueTask: (taskId: string, options: ContinueTaskOptions) => Promise<WorkbenchSnapshot>;
+  startAgentAuth: (agentId: AgentId) => Promise<string>;
   setOllamaRole: (role: AgentRole, model?: string) => Promise<WorkbenchSnapshot>;
   shutdownOllama: () => Promise<WorkbenchSnapshot>;
   setProjectArchiveEnabled: (enabled: boolean) => Promise<WorkbenchSnapshot>;
@@ -44,8 +46,10 @@ export const IPC_CHANNELS = {
   sendTerminalInput: 'workbench:terminals:input',
   resizeTerminal: 'workbench:terminals:resize',
   startWorkflow: 'workbench:workflow:start',
+  cancelWorkflow: 'workbench:workflow:cancel',
   promoteTask: 'workbench:workflow:promote',
   continueTask: 'workbench:workflow:continue',
+  startAgentAuth: 'workbench:agents:start-auth',
   setOllamaRole: 'workbench:ollama:set-role',
   shutdownOllama: 'workbench:ollama:shutdown',
   setProjectArchiveEnabled: 'workbench:project:set-archive-enabled',

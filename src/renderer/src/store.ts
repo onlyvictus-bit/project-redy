@@ -29,6 +29,7 @@ interface WorkbenchState {
   stopTerminal: (sessionId: string) => Promise<void>;
   sendTerminalInput: (sessionId: string, input: string) => Promise<void>;
   startWorkflow: (input: StartWorkflowInput) => Promise<void>;
+  cancelWorkflow: (taskId: string) => Promise<void>;
   promoteTask: (taskId: string, action: PromotionAction) => Promise<void>;
   continueTask: (taskId: string, options: ContinueTaskOptions) => Promise<void>;
   startAgentAuth: (agentId: AgentId) => Promise<string | undefined>;
@@ -115,6 +116,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   },
   startWorkflow: async (input) => {
     await runAction(set, () => window.workbench.startWorkflow(input), (snapshot) => set({ snapshot }));
+  },
+  cancelWorkflow: async (taskId) => {
+    await runAction(set, () => window.workbench.cancelWorkflow(taskId), (snapshot) => set({ snapshot }));
   },
   promoteTask: async (taskId, action) => {
     await runAction(set, () => window.workbench.promoteTask(taskId, action), (snapshot) => set({ snapshot }));

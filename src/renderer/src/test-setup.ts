@@ -29,11 +29,17 @@ const workbenchStub: WorkbenchApi = {
   startWorkflow: vi.fn(async () => {
     throw new Error('startWorkflow not mocked for this test');
   }),
+  cancelWorkflow: vi.fn(async () => {
+    throw new Error('cancelWorkflow not mocked for this test');
+  }),
   promoteTask: vi.fn(async () => {
     throw new Error('promoteTask not mocked for this test');
   }),
   continueTask: vi.fn(async () => {
     throw new Error('continueTask not mocked for this test');
+  }),
+  startAgentAuth: vi.fn(async () => {
+    throw new Error('startAgentAuth not mocked for this test');
   }),
   setOllamaRole: vi.fn(async () => {
     throw new Error('setOllamaRole not mocked for this test');

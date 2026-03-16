@@ -48,8 +48,10 @@ function wireIpc(window: BrowserWindow, nextController: AppController): void {
   ipcMain.handle(IPC_CHANNELS.sendTerminalInput, (_event, sessionId, input) => nextController.sendTerminalInput(sessionId, input));
   ipcMain.handle(IPC_CHANNELS.resizeTerminal, (_event, sessionId, cols, rows) => nextController.resizeTerminal(sessionId, cols, rows));
   ipcMain.handle(IPC_CHANNELS.startWorkflow, (_event, input) => nextController.startWorkflow(input));
+  ipcMain.handle(IPC_CHANNELS.cancelWorkflow, (_event, taskId) => nextController.cancelWorkflow(taskId));
   ipcMain.handle(IPC_CHANNELS.promoteTask, (_event, taskId, action) => nextController.promoteTask(taskId, action));
   ipcMain.handle(IPC_CHANNELS.continueTask, (_event, taskId, options) => nextController.continueTask(taskId, options));
+  ipcMain.handle(IPC_CHANNELS.startAgentAuth, (_event, agentId) => nextController.startAgentAuth(agentId));
   ipcMain.handle(IPC_CHANNELS.setOllamaRole, (_event, role, model) => nextController.setOllamaRole(role, model));
   ipcMain.handle(IPC_CHANNELS.shutdownOllama, () => nextController.shutdownOllama());
   ipcMain.handle(IPC_CHANNELS.setProjectArchiveEnabled, (_event, enabled) => nextController.setProjectArchiveEnabled(enabled));
