@@ -92,6 +92,11 @@ export abstract class BaseConnector implements AgentConnector {
   }
 
   async runJob(input: ConnectorJobInput): Promise<ArtifactBundle> {
+    const MAX_PROMPT_BYTES = 1_000_000; // 1MB
+    if (Buffer.byteLength(input.prompt, 'utf8') > MAX_PROMPT_BYTES) {
+      throw new Error(`Prompt exceeds maximum size of ${MAX_PROMPT_BYTES / 1000}KB. Use a file-based prompt for large inputs.`);
+    }
+
     const { command, args, env } = this.getScriptedCommand(input);
     const result = await this.processRunner.run(command, args, {
       cwd: input.cwd,

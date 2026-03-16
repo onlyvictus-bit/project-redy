@@ -51,6 +51,13 @@ export class WorkspaceManager {
     const branchName = `triad/${sanitizeBranchName(`${brief.slice(0, 40)}-${taskId.slice(0, 8)}`)}`;
     const worktreePath = path.join(this.workspaceRoot, taskId);
 
+    // Guard: ensure worktreePath is inside workspaceRoot
+    const resolvedRoot = path.resolve(this.workspaceRoot);
+    const resolvedWorktree = path.resolve(worktreePath);
+    if (!resolvedWorktree.startsWith(resolvedRoot + path.sep) && resolvedWorktree !== resolvedRoot) {
+      throw new Error(`Worktree path '${resolvedWorktree}' escapes workspace root.`);
+    }
+
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
 
     await this.processRunner.run(
@@ -113,6 +120,11 @@ export class WorkspaceManager {
   }
 
   async cleanupTaskWorkspace(task: TaskRun, project: ProjectRef): Promise<void> {
+    const resolvedRoot = path.resolve(this.workspaceRoot);
+    const resolvedWorktree = path.resolve(task.worktreePath);
+    if (!resolvedWorktree.startsWith(resolvedRoot + path.sep)) {
+      throw new Error(`Refusing to clean up worktree '${resolvedWorktree}': outside workspace root.`);
+    }
     const runner = this.resolveRunner(project);
     await this.processRunner.run('git', ['worktree', 'remove', '--force', mapPathForRunner(task.worktreePath, runner)], {
       cwd: project.rootPath,

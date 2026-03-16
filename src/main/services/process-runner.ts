@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 
 import pty from 'node-pty';
 
@@ -39,6 +40,10 @@ export class ProcessRunner {
   async run(command: string, args: string[], options: RunCommandOptions): Promise<CommandResult> {
     if (options.runner === 'http-local') {
       throw new Error('http-local commands cannot be executed through ProcessRunner.');
+    }
+
+    if (options.cwd && !path.isAbsolute(options.cwd)) {
+      throw new Error(`ProcessRunner.run: cwd must be an absolute path, got '${options.cwd}'.`);
     }
 
     const { resolvedCommand, resolvedArgs } = this.prepareCommand(command, args, options);
@@ -115,6 +120,10 @@ export class ProcessRunner {
   spawnInteractive(spec: LaunchSpec): IPty {
     if (spec.runner === 'http-local') {
       throw new Error('Cannot start an interactive PTY for http-local endpoints.');
+    }
+
+    if (spec.cwd && !path.isAbsolute(spec.cwd)) {
+      throw new Error(`ProcessRunner.spawnInteractive: cwd must be an absolute path, got '${spec.cwd}'.`);
     }
 
     const { resolvedCommand, resolvedArgs } = this.prepareCommand(spec.command, spec.args, {
