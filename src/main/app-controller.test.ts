@@ -84,7 +84,8 @@ const mocks = vi.hoisted(() => {
         running: false,
         owner: 'none',
         endpoint: 'http://localhost:11434'
-      })
+      }),
+      shutdownManagedOnQuit: vi.fn()
     },
     archive: {
       getArchiveSummary: vi.fn().mockReturnValue(null),
@@ -123,7 +124,7 @@ const mocks = vi.hoisted(() => {
 // ---------------------------------------------------------------------------
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn().mockReturnValue('/tmp/userData') },
+  app: { getPath: vi.fn().mockReturnValue('/tmp/userData'), on: vi.fn() },
   dialog: mocks.dialog,
   shell: mocks.shell
 }));

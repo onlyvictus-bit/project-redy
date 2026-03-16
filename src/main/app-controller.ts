@@ -473,6 +473,16 @@ export class AppController extends EventEmitter {
     return this.snapshot;
   }
 
+  /**
+   * Register Electron app-level lifecycle handlers.
+   * Call once from index.ts after wireIpc() completes.
+   */
+  registerQuitHandlers(): void {
+    app.on('before-quit', () => {
+      this.ollamaManager.shutdownManagedOnQuit();
+    });
+  }
+
   async shutdownOllama(): Promise<WorkbenchSnapshot> {
     this.snapshot.ollama = await this.ollamaManager.shutdownIfManaged();
     this.connectors.ollama.profile.role = 'off';

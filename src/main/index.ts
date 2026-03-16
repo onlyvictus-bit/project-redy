@@ -63,6 +63,7 @@ app.whenReady().then(() => {
   controller = new AppController();
   mainWindow = createMainWindow();
   wireIpc(mainWindow, controller);
+  controller.registerQuitHandlers();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && controller) {
