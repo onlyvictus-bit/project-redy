@@ -151,7 +151,7 @@ export class AppController extends EventEmitter {
     const resolvedRunner = await this.resolveAutoRunner(runnerPreference);
     const project = await this.workspaceManager.inspectProject(result.filePaths[0], runnerPreference, resolvedRunner);
     this.terminalManager.stopAll();
-    this.snapshot.terminals = [];
+    this.snapshot.terminals = this.terminalManager.list();
     this.snapshot.project = project;
     this.snapshot.tasks = this.persistence.loadTasks(project.id);
     this.persistence.saveProject(project);

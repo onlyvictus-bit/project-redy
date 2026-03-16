@@ -125,6 +125,9 @@ describe('TerminalManager', () => {
   });
 
   it('stopAll() kills all PTYs and empties the session list', () => {
+    const exitPayloads: Array<unknown> = [];
+    manager.on('exit', (p) => exitPayloads.push(p));
+
     const pty2 = makeFakePty();
     processRunner.spawnInteractive
       .mockReturnValueOnce(pty)
@@ -139,6 +142,7 @@ describe('TerminalManager', () => {
     expect(pty.kill).toHaveBeenCalled();
     expect(pty2.kill).toHaveBeenCalled();
     expect(manager.list()).toHaveLength(0);
+    expect(exitPayloads).toHaveLength(0);
   });
 
   it('stopAll() on an empty manager is a no-op', () => {

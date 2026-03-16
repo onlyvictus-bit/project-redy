@@ -38,6 +38,7 @@ export class TerminalManager extends EventEmitter {
     });
 
     ptyProcess.onExit(() => {
+      if (!this.sessions.has(session.id)) return;
       this.sessions.delete(session.id);
       this.emit('exit', { sessionId: session.id });
     });
