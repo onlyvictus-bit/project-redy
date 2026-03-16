@@ -134,6 +134,16 @@ export class AppController extends EventEmitter {
       }
     }
 
+    if (this.snapshot.project) {
+      const removedWorktrees = await this.workspaceManager.gcStaleWorktrees(
+        this.snapshot.project,
+        this.snapshot.tasks
+      );
+      if (removedWorktrees.length > 0) {
+        this.pushNotification(`Cleaned up ${removedWorktrees.length} stale worktree(s) from previous sessions.`);
+      }
+    }
+
     await this.probeAgents(true);
     return this.snapshot;
   }
@@ -333,12 +343,18 @@ export class AppController extends EventEmitter {
       if (result) {
         throw new Error(result);
       }
+      task.worktreeStatus = 'preserved';
+      task.updatedAt = new Date().toISOString();
+      this.upsertTask(task);
       this.pushNotification(`Opened worktree for task ${task.id.slice(0, 8)}.`);
       this.emitState();
       return this.snapshot;
     }
 
     if (action === 'keep-worktree') {
+      task.worktreeStatus = 'preserved';
+      task.updatedAt = new Date().toISOString();
+      this.upsertTask(task);
       this.pushNotification(`Worktree kept for task ${task.id.slice(0, 8)}.`);
       this.emitState();
       return this.snapshot;
@@ -347,6 +363,7 @@ export class AppController extends EventEmitter {
     await this.workspaceManager.promoteTask(task, project, action);
     task.approvalState = 'approved';
     task.stage = 'done';
+    task.worktreeStatus = 'cleaned';
     task.updatedAt = new Date().toISOString();
     this.upsertTask(task);
     this.projectArchive.appendEvent(project, 'task-promoted', {

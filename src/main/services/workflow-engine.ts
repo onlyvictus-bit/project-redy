@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type {
   ActiveAgentRole,
   AgentId,
+  AgentRole,
   ArtifactBundle,
   ContinueTaskOptions,
   Finding,
@@ -10,12 +11,11 @@ import type {
   ResumableStage,
   StartWorkflowInput,
   TaskRun,
-  TaskStage,
   TaskStepRecord
 } from '@shared/types';
 
 import { buildArchitecturePrompt, buildCodingPrompt, buildFixPrompt, buildMonitorPrompt, buildReviewPrompt } from '../utils/prompts';
-import type { AgentConnector } from '../connectors/base';
+import { ConnectorJobError, type AgentConnector } from '../connectors/base';
 import { WorkspaceManager } from './workspace-manager';
 
 interface WorkflowContext {
@@ -52,6 +52,7 @@ export class WorkflowEngine {
       findings: [],
       artifacts: [],
       steps: [],
+      worktreeStatus: 'active' as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -82,7 +83,9 @@ export class WorkflowEngine {
         throw new Error(`Unsupported workflow ${String(input.workflowId)}`);
     }
 
-    context.task.stage = context.task.stage === 'error' ? 'error' : 'promote';
+    if (context.task.stage !== 'error' && context.task.stage !== 'done') {
+      context.task.stage = 'promote';
+    }
     context.task.updatedAt = new Date().toISOString();
     updateTask(context.task);
     return context.task;
@@ -113,7 +116,9 @@ export class WorkflowEngine {
         default:
           throw new Error(`Resume not supported for workflow ${task.workflowId}`);
       }
-      context.task.stage = context.task.stage === 'error' ? 'error' : 'promote';
+      if (context.task.stage !== 'error' && context.task.stage !== 'done') {
+        context.task.stage = 'promote';
+      }
     } else {
       const enforceReadOnly = options.role === 'reviewer' || options.role === 'tester' || options.role === 'monitor';
       let prompt: string;
@@ -133,8 +138,10 @@ export class WorkflowEngine {
           case 'code':
             prompt = buildCodingPrompt(task);
             break;
-          default:
-            throw new Error(`No built-in prompt for stage ${String(options.stage)}`);
+          default: {
+            const _exhaustive: never = options.stage;
+            throw new Error(`No built-in prompt for stage ${String(_exhaustive)}`);
+          }
         }
       }
       await this.runStep(context, options.stage, options.agentId, prompt, options.role, enforceReadOnly);
@@ -186,20 +193,27 @@ export class WorkflowEngine {
   private async runArchitectureCompare(context: WorkflowContext): Promise<void> {
     const agents: AgentId[] = ['claude', 'codex', 'gemini', 'ollama'];
     for (const agentId of agents) {
-      const role = agentId === 'ollama' ? 'architect' : 'planner';
-      await this.runStep(context, 'review', agentId, buildArchitecturePrompt(context.task, agentId), role, agentId !== 'claude');
+      // CLI agents always run as read-only planner to prevent unexpected edits during a compare workflow.
+      // Ollama has no write capability so its personality role is safe to honour.
+      const role: ActiveAgentRole = agentId === 'ollama'
+        ? this.resolveActiveRole(this.connectors().ollama.profile.role, 'architect')
+        : 'planner';
+      await this.runStep(context, 'review', agentId, buildArchitecturePrompt(context.task, agentId), role, true);
     }
+    context.task.approvalState = 'not-required';
     context.task.stage = 'done';
   }
 
   private async runAwayMonitor(context: WorkflowContext): Promise<void> {
-    await this.runStep(context, 'review', 'ollama', buildMonitorPrompt(context.task), 'monitor');
+    const role = this.resolveActiveRole(this.connectors().ollama.profile.role, 'monitor');
+    await this.runStep(context, 'review', 'ollama', buildMonitorPrompt(context.task), role);
+    context.task.approvalState = 'not-required';
     context.task.stage = 'done';
   }
 
   private async runStep(
     context: WorkflowContext,
-    stage: TaskStage,
+    stage: ResumableStage,
     agentId: AgentId,
     prompt: string,
     role: ActiveAgentRole,
@@ -251,10 +265,29 @@ export class WorkflowEngine {
       step.completedAt = new Date().toISOString();
       context.task.stage = 'error';
       context.task.errorMessage = error instanceof Error ? error.message : String(error);
+      if (error instanceof ConnectorJobError) {
+        step.summary = error.artifact.summary;
+        context.task.summary = error.artifact.summary;
+        context.task.findings = this.mergeFindings(context.task.findings, error.artifact.findings);
+        context.task.artifacts.unshift(error.artifact);
+        context.appendArtifact(error.artifact);
+      }
     }
 
     context.task.updatedAt = new Date().toISOString();
     context.updateTask(context.task);
+  }
+
+  /**
+   * Maps a connector's profile role to a valid ActiveAgentRole for a workflow step.
+   * 'developer' is cosmetically distinct from 'coder' but executes identically.
+   * 'off' and 'compare-only' fall back to the workflow-defined default.
+   */
+  private resolveActiveRole(profileRole: AgentRole, fallback: ActiveAgentRole): ActiveAgentRole {
+    const active = new Set<string>(['coder', 'reviewer', 'tester', 'architect', 'planner', 'monitor']);
+    if (active.has(profileRole)) return profileRole as ActiveAgentRole;
+    if (profileRole === 'developer') return 'coder';
+    return fallback;
   }
 
   private resolveAgents(workflowId: StartWorkflowInput['workflowId']): AgentId[] {

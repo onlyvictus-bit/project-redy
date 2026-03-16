@@ -111,7 +111,8 @@ const mocks = vi.hoisted(() => {
       resolveRunner: vi.fn().mockReturnValue('windows'),
       inspectProject: vi.fn(),
       createTaskWorkspace: vi.fn(),
-      promoteTask: vi.fn().mockResolvedValue(undefined)
+      promoteTask: vi.fn().mockResolvedValue(undefined),
+      gcStaleWorktrees: vi.fn().mockResolvedValue([])
     },
     connectors
   };

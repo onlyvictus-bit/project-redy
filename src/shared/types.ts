@@ -40,6 +40,8 @@ export interface ProjectRef {
   rootPath: string;
   wslPath?: string;
   runnerPreference: RunnerKind | 'auto';
+  /** Resolved at load/set time; used by workspace layer to avoid re-detecting WSL on every git call. */
+  resolvedRunner?: RunnerKind;
   isGitRepo: boolean;
   currentBranch?: string;
   archivePath: string;
@@ -69,6 +71,8 @@ export interface AgentProfile {
   message?: string;
   detectedPath?: string;
   lastCheckedAt?: string;
+  /** Ollama only: the model last explicitly selected by the user. Persisted so it survives restart. */
+  selectedModel?: string;
 }
 
 export interface Finding {
@@ -138,6 +142,8 @@ export interface TaskRun {
   steps: TaskStepRecord[];
   createdAt: string;
   updatedAt: string;
+  /** Track whether the worktree is still present and who owns it. */
+  worktreeStatus?: 'active' | 'preserved' | 'cleaned';
 }
 
 export interface TerminalSession {
@@ -160,6 +166,7 @@ export interface OllamaStatus {
   running: boolean;
   owner: OllamaLifecycleOwner;
   activeModel?: string;
+  availableModels?: string[];
   endpoint: string;
   message?: string;
 }
