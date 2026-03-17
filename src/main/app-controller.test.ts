@@ -154,8 +154,14 @@ vi.mock('./services/workspace-manager', () => ({
   WorkspaceManager: vi.fn().mockImplementation(() => mocks.workspaceManager)
 }));
 
+const workflowEngineMock = vi.hoisted(() => ({
+  cancel: vi.fn(),
+  start: vi.fn(),
+  continue: vi.fn()
+}));
+
 vi.mock('./services/workflow-engine', () => ({
-  WorkflowEngine: vi.fn().mockImplementation(() => ({}))
+  WorkflowEngine: vi.fn().mockImplementation(() => workflowEngineMock)
 }));
 
 vi.mock('./connectors', () => ({
@@ -245,6 +251,11 @@ beforeEach(() => {
   mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
   // Reset getAuthLaunchSpec — individual tests add it when needed.
   delete (mocks.connectors.claude as Record<string, unknown>).getAuthLaunchSpec;
+
+  // Reset workflow engine mock
+  workflowEngineMock.cancel.mockReset();
+  workflowEngineMock.start.mockReset();
+  workflowEngineMock.continue.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -826,5 +837,67 @@ describe('AppController.setOllamaRole (selectedModel persistence)', () => {
     const snap = controller as unknown as { snapshot: { agents: { ollama: AgentProfile } } };
     // selectedModel from the connector profile must survive the setOllamaRole call.
     expect(snap.snapshot.agents.ollama.selectedModel).toBe('llama3:8b');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectProject — stopAll cleanup on project switch
+// ---------------------------------------------------------------------------
+
+describe('AppController.selectProject (cleanup lifecycle)', () => {
+  it('calls terminalManager.stopAll when a new project is selected', async () => {
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/new-project'] });
+    mocks.workspaceManager.inspectProject.mockResolvedValue(
+      makeProject({ rootPath: '/new-project' })
+    );
+
+    const controller = new AppController();
+    await controller.selectProject();
+
+    expect(mocks.terminalManager.stopAll).toHaveBeenCalled();
+  });
+
+  it('does not call terminalManager.stopAll when the dialog is cancelled', async () => {
+    mocks.dialog.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+
+    const controller = new AppController();
+    await controller.selectProject();
+
+    expect(mocks.terminalManager.stopAll).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cancelWorkflow — task-not-found guard and engine delegation
+// ---------------------------------------------------------------------------
+
+describe('AppController.cancelWorkflow', () => {
+  it('throws when the task is not found in the snapshot', () => {
+    const controller = new AppController();
+
+    expect(() => controller.cancelWorkflow('non-existent-task-id')).toThrow('Task not found');
+  });
+
+  it('calls workflowEngine.cancel with the correct taskId when task exists', () => {
+    const controller = new AppController();
+    const task = makeTask('task-to-cancel');
+    (controller as unknown as { snapshot: { tasks: TaskRun[] } }).snapshot.tasks = [task];
+
+    controller.cancelWorkflow('task-to-cancel');
+
+    expect(workflowEngineMock.cancel).toHaveBeenCalledWith('task-to-cancel');
+  });
+
+  it('returns the current snapshot after cancellation', () => {
+    const controller = new AppController();
+    const task = makeTask('task-to-cancel');
+    const snap = controller as unknown as { snapshot: { tasks: TaskRun[]; project: ProjectRef | null } };
+    snap.snapshot.tasks = [task];
+    snap.snapshot.project = makeProject();
+
+    const result = controller.cancelWorkflow('task-to-cancel');
+
+    expect(result).toBeDefined();
+    expect(result.tasks).toContainEqual(task);
   });
 });
