@@ -1,3 +1,4 @@
+import type { IpcRendererEvent } from 'electron';
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { IPC_CHANNELS, type WorkbenchApi } from '@shared/ipc';
@@ -23,14 +24,14 @@ const api: WorkbenchApi = {
   saveProjectArchive: () => ipcRenderer.invoke(IPC_CHANNELS.saveProjectArchive),
   openProjectArchive: () => ipcRenderer.invoke(IPC_CHANNELS.openProjectArchive),
   onState: (listener) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, state: Awaited<ReturnType<WorkbenchApi['bootstrap']>>) => listener(state);
+    const wrapped = (_event: IpcRendererEvent, state: Awaited<ReturnType<WorkbenchApi['bootstrap']>>) => listener(state);
     ipcRenderer.on(IPC_CHANNELS.stateChanged, wrapped);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.stateChanged, wrapped);
     };
   },
   onTerminalData: (listener) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: { sessionId: string; data: string }) => listener(payload);
+    const wrapped = (_event: IpcRendererEvent, payload: { sessionId: string; data: string }) => listener(payload);
     ipcRenderer.on(IPC_CHANNELS.terminalData, wrapped);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.terminalData, wrapped);
