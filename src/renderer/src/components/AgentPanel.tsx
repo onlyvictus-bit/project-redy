@@ -84,7 +84,7 @@ export function AgentPanel({ agent, ollamaModel }: { agent: AgentProfile; ollama
   })();
 
   return (
-    <section className={`agent-panel status-${agent.status}`}>
+    <section className={`agent-panel status-${agent.status}`} data-agent={agent.id}>
       <div className="panel-header">
         <div>
           <h3>{agent.displayName}</h3>
@@ -167,17 +167,6 @@ export function AgentPanel({ agent, ollamaModel }: { agent: AgentProfile; ollama
             className="expand-terminal-btn"
             aria-label={`Expand ${agent.displayName} terminal`}
             onClick={() => expandTerminal(session.id)}
-            style={{
-              marginTop: 4,
-              background: 'transparent',
-              border: '1px solid #3a4a5a',
-              color: '#d8e1f0',
-              padding: '2px 8px',
-              cursor: 'pointer',
-              borderRadius: 3,
-              fontSize: 11,
-              fontFamily: 'inherit',
-            }}
           >
             Expand
           </button>
