@@ -52,6 +52,10 @@ const workbenchStub: WorkbenchApi = {
   }),
   saveProjectArchive: vi.fn(async () => undefined),
   openProjectArchive: vi.fn(async () => undefined),
+  listArchiveTasks: vi.fn(async () => []),
+  getArchiveTaskDetail: vi.fn(async () => {
+    throw new Error('getArchiveTaskDetail not mocked for this test');
+  }),
   onState: vi.fn(() => () => undefined),
   onTerminalData: vi.fn(() => () => undefined)
 };

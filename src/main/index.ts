@@ -7,6 +7,7 @@ import { AppController } from './app-controller';
 
 let controller: AppController | undefined;
 let mainWindow: BrowserWindow | undefined;
+let ipcWired = false;
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -16,7 +17,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 760,
     title: 'Triad Workbench',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index.cjs'),
       sandbox: false
     }
   });
@@ -30,16 +31,28 @@ function createMainWindow(): BrowserWindow {
   return window;
 }
 
-function wireIpc(window: BrowserWindow, nextController: AppController): void {
+function wireIpc(nextController: AppController): void {
+  if (ipcWired) return;
+  ipcWired = true;
+
+  // Forward controller events to whichever window is currently open.
+  // Uses the module-level `mainWindow` reference so macOS re-activate picks up the new window.
   nextController.on('state', (state) => {
-    window.webContents.send(IPC_CHANNELS.stateChanged, state);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.stateChanged, state);
+    }
   });
   nextController.on('terminal-data', (payload) => {
-    window.webContents.send(IPC_CHANNELS.terminalData, payload);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.terminalData, payload);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.bootstrap, () => nextController.bootstrap());
-  ipcMain.handle(IPC_CHANNELS.selectProject, () => nextController.selectProject());
+  ipcMain.handle(IPC_CHANNELS.selectProject, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    return nextController.selectProject(win);
+  });
   ipcMain.handle(IPC_CHANNELS.probeAgents, (_event, deep?: boolean) => nextController.probeAgents(deep));
   ipcMain.handle(IPC_CHANNELS.setProjectRunner, (_event, runner) => nextController.setProjectRunner(runner));
   ipcMain.handle(IPC_CHANNELS.setAgentRole, (_event, agentId, role) => nextController.setAgentRole(agentId, role));
@@ -57,18 +70,20 @@ function wireIpc(window: BrowserWindow, nextController: AppController): void {
   ipcMain.handle(IPC_CHANNELS.setProjectArchiveEnabled, (_event, enabled) => nextController.setProjectArchiveEnabled(enabled));
   ipcMain.handle(IPC_CHANNELS.saveProjectArchive, () => nextController.saveProjectArchive());
   ipcMain.handle(IPC_CHANNELS.openProjectArchive, () => nextController.openProjectArchive());
+  ipcMain.handle(IPC_CHANNELS.listArchiveTasks, (_event, projectId: string) => nextController.listArchiveTasks(projectId));
+  ipcMain.handle(IPC_CHANNELS.getArchiveTaskDetail, (_event, taskId: string) => nextController.getArchiveTaskDetail(taskId));
 }
 
 app.whenReady().then(() => {
   controller = new AppController();
   mainWindow = createMainWindow();
-  wireIpc(mainWindow, controller);
+  wireIpc(controller);
   controller.registerQuitHandlers();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && controller) {
       mainWindow = createMainWindow();
-      wireIpc(mainWindow, controller);
+      // IPC handlers are already registered; new window receives events via mainWindow reference.
     }
   });
 });

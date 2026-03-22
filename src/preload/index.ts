@@ -23,6 +23,8 @@ const api: WorkbenchApi = {
   setProjectArchiveEnabled: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.setProjectArchiveEnabled, enabled),
   saveProjectArchive: () => ipcRenderer.invoke(IPC_CHANNELS.saveProjectArchive),
   openProjectArchive: () => ipcRenderer.invoke(IPC_CHANNELS.openProjectArchive),
+  listArchiveTasks: (projectId) => ipcRenderer.invoke(IPC_CHANNELS.listArchiveTasks, projectId),
+  getArchiveTaskDetail: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.getArchiveTaskDetail, taskId),
   onState: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: Awaited<ReturnType<WorkbenchApi['bootstrap']>>) => listener(state);
     ipcRenderer.on(IPC_CHANNELS.stateChanged, wrapped);

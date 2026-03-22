@@ -96,7 +96,15 @@ export class PersistenceService {
 
   loadAgentProfiles(): AgentProfile[] {
     const rows = this.db.prepare('SELECT profile_json FROM agent_profiles').all() as Array<{ profile_json: string }>;
-    return rows.map((row) => JSON.parse(row.profile_json) as AgentProfile);
+    const profiles: AgentProfile[] = [];
+    for (const row of rows) {
+      try {
+        profiles.push(JSON.parse(row.profile_json) as AgentProfile);
+      } catch {
+        process.stderr.write(`[PersistenceService] Skipping corrupt agent profile row: ${row.profile_json.slice(0, 80)}\n`);
+      }
+    }
+    return profiles;
   }
 
   saveAgentProfile(profile: AgentProfile): void {
@@ -118,7 +126,15 @@ export class PersistenceService {
     const rows = this.db
       .prepare('SELECT task_json FROM task_runs WHERE project_id = ? ORDER BY updated_at DESC')
       .all(projectId) as Array<{ task_json: string }>;
-    return rows.map((row) => JSON.parse(row.task_json) as TaskRun);
+    const tasks: TaskRun[] = [];
+    for (const row of rows) {
+      try {
+        tasks.push(JSON.parse(row.task_json) as TaskRun);
+      } catch {
+        process.stderr.write(`[PersistenceService] Skipping corrupt task row: ${row.task_json.slice(0, 80)}\n`);
+      }
+    }
+    return tasks;
   }
 
   saveTask(task: TaskRun): void {
@@ -162,15 +178,20 @@ export class PersistenceService {
   }
 
   appendRunEvent(taskId: string, eventType: string, payload: Record<string, unknown>): void {
-    this.db.prepare(`
-      INSERT INTO run_events (id, task_id, event_type, payload_json, recorded_at)
-      VALUES (@id, @taskId, @eventType, @payload, CURRENT_TIMESTAMP)
-    `).run({
-      id: randomUUID(),
-      taskId,
-      eventType,
-      payload: JSON.stringify(payload)
-    });
+    try {
+      this.db.prepare(`
+        INSERT INTO run_events (id, task_id, event_type, payload_json, recorded_at)
+        VALUES (@id, @taskId, @eventType, @payload, CURRENT_TIMESTAMP)
+      `).run({
+        id: randomUUID(),
+        taskId,
+        eventType,
+        payload: JSON.stringify(payload)
+      });
+    } catch (err) {
+      // Non-fatal — event logging must not interrupt a running workflow.
+      process.stderr.write(`[PersistenceService] appendRunEvent failed (${eventType}): ${String(err)}\n`);
+    }
   }
 
   loadRunEvents(taskId: string): Array<{ eventType: string; payload: Record<string, unknown>; recordedAt: string }> {
@@ -182,6 +203,13 @@ export class PersistenceService {
       payload: JSON.parse(row.payload_json) as Record<string, unknown>,
       recordedAt: row.recorded_at
     }));
+  }
+
+  loadArtifactsForTask(taskId: string): ArtifactBundle[] {
+    const rows = this.db
+      .prepare('SELECT artifact_json FROM artifacts WHERE task_id = ? ORDER BY created_at ASC')
+      .all(taskId) as Array<{ artifact_json: string }>;
+    return rows.map((row) => JSON.parse(row.artifact_json) as ArtifactBundle);
   }
 
   private migrate(): void {

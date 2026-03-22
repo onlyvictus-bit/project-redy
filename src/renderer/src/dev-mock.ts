@@ -251,6 +251,8 @@ const mockApi: WorkbenchApi = {
   setProjectArchiveEnabled: async () => MOCK_SNAPSHOT,
   saveProjectArchive: async () => MOCK_SNAPSHOT.archive,
   openProjectArchive: async () => MOCK_SNAPSHOT.archive,
+  listArchiveTasks: async () => [],
+  getArchiveTaskDetail: async () => { throw new Error('getArchiveTaskDetail not mocked'); },
   onState: () => () => {},
   onTerminalData: () => () => {}
 };

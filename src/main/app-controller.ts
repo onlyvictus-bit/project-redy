@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
-import { app, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
 
 import {
   DEFAULT_AGENTS,
@@ -14,9 +14,12 @@ import {
   type ProjectRef,
   type RunnerKind,
   type StartWorkflowInput,
+  type TaskRun,
   type TerminalSession,
   type WorkbenchSnapshot
 } from '@shared/types';
+
+import { type ArchiveTaskDetail } from '@shared/ipc';
 
 import { createConnector } from './connectors';
 import type { AgentConnector } from './connectors/base';
@@ -158,10 +161,11 @@ export class AppController extends EventEmitter {
     return this.snapshot;
   }
 
-  async selectProject(): Promise<ProjectRef | undefined> {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory']
-    });
+  async selectProject(parentWindow?: BrowserWindow): Promise<ProjectRef | undefined> {
+    const win = parentWindow ?? BrowserWindow.getFocusedWindow() ?? undefined;
+    const result = await (win
+      ? dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : dialog.showOpenDialog({ properties: ['openDirectory'] }));
 
     if (result.canceled || !result.filePaths.length) {
       return this.snapshot.project;
@@ -205,26 +209,25 @@ export class AppController extends EventEmitter {
   }
 
   async setProjectRunner(runnerPreference: RunnerKind | 'auto'): Promise<WorkbenchSnapshot> {
-    if (!this.snapshot.project) {
-      throw new Error('Select a project before choosing a runner.');
-    }
-
     const resolvedRunner = await this.resolveAutoRunner(runnerPreference);
 
-    this.snapshot.project = {
-      ...this.snapshot.project,
-      runnerPreference,
-      resolvedRunner
-    };
+    if (this.snapshot.project) {
+      this.snapshot.project = {
+        ...this.snapshot.project,
+        runnerPreference,
+        resolvedRunner
+      };
+      this.persistence.saveProject(this.snapshot.project);
+    }
 
     for (const connector of Object.values(this.connectors)) {
       if (connector.profile.id !== 'ollama') {
         connector.profile.runner = resolvedRunner;
+        this.snapshot.agents[connector.profile.id] = connector.profile;
         this.persistence.saveAgentProfile(connector.profile);
       }
     }
 
-    this.persistence.saveProject(this.snapshot.project);
     this.emitState();
     return this.snapshot;
   }
@@ -499,6 +502,7 @@ export class AppController extends EventEmitter {
    */
   registerQuitHandlers(): void {
     app.on('before-quit', () => {
+      this.terminalManager.stopAll();
       this.ollamaManager.shutdownManagedOnQuit();
     });
   }
@@ -566,6 +570,19 @@ export class AppController extends EventEmitter {
     this.snapshot.archive = archive;
     this.emit('state', this.snapshot);
     return archive;
+  }
+
+  listArchiveTasks(projectId: string): TaskRun[] {
+    return this.persistence.loadTasks(projectId);
+  }
+
+  getArchiveTaskDetail(taskId: string): ArchiveTaskDetail {
+    const allTasks = this.persistence.loadTasks(this.snapshot.project?.id ?? '');
+    const task = allTasks.find((t) => t.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found in archive.`);
+    const events = this.persistence.loadRunEvents(taskId);
+    const artifacts = this.persistence.loadArtifactsForTask(taskId);
+    return { task, events, artifacts };
   }
 
   private upsertTask(task: WorkbenchSnapshot['tasks'][number]): void {
