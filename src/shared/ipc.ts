@@ -1,15 +1,23 @@
 import type {
   AgentId,
   AgentRole,
+  ArtifactBundle,
   ContinueTaskOptions,
   PromotionAction,
   ProjectArchiveSummary,
   ProjectRef,
   RunnerKind,
   StartWorkflowInput,
+  TaskRun,
   TerminalSession,
   WorkbenchSnapshot
 } from './types';
+
+export interface ArchiveTaskDetail {
+  task: TaskRun;
+  events: Array<{ eventType: string; payload: Record<string, unknown>; recordedAt: string }>;
+  artifacts: ArtifactBundle[];
+}
 
 export interface WorkbenchApi {
   bootstrap: () => Promise<WorkbenchSnapshot>;
@@ -31,6 +39,8 @@ export interface WorkbenchApi {
   setProjectArchiveEnabled: (enabled: boolean) => Promise<WorkbenchSnapshot>;
   saveProjectArchive: () => Promise<ProjectArchiveSummary | undefined>;
   openProjectArchive: () => Promise<ProjectArchiveSummary | undefined>;
+  listArchiveTasks: (projectId: string) => Promise<TaskRun[]>;
+  getArchiveTaskDetail: (taskId: string) => Promise<ArchiveTaskDetail>;
   onState: (listener: (state: WorkbenchSnapshot) => void) => () => void;
   onTerminalData: (listener: (payload: { sessionId: string; data: string }) => void) => () => void;
 }
@@ -55,6 +65,8 @@ export const IPC_CHANNELS = {
   setProjectArchiveEnabled: 'workbench:project:set-archive-enabled',
   saveProjectArchive: 'workbench:project:save-archive',
   openProjectArchive: 'workbench:project:open-archive',
+  listArchiveTasks: 'workbench:archive:list-tasks',
+  getArchiveTaskDetail: 'workbench:archive:get-task-detail',
   stateChanged: 'workbench:event:state',
   terminalData: 'workbench:event:terminal-data'
 } as const;
