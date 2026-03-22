@@ -31,11 +31,14 @@
 - Ollama model discovery
 - Per-agent states: missing → installed → needs-login → ready → running → error
 
-### Phase 4: Archive Browser
-- Task history explorer inside the app
-- Transcript reader, prompt viewer, artifact viewer
-- Event timeline
-- Filter by agent, workflow, date, severity
+### Phase 4: Archive Browser + Full-Screen Terminal
+**Goal:** Surface task history inside the app and make terminals comfortable to work with full-screen.
+**Plans:** 3 plans
+
+Plans:
+- [x] 04-01-PLAN.md — Full-screen terminal overlay (expand button, CSS toggle, Zustand state)
+- [x] 04-02-PLAN.md — Archive IPC plumbing (4-file contract: ipc.ts → preload → main → controller)
+- [ ] 04-03-PLAN.md — ArchiveBrowser component with filters, transcript/prompt/findings/timeline tabs
 
 ### Phase 5: Custom Workflow Builder
 - Workflow step editor
