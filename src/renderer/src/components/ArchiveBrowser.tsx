@@ -85,7 +85,10 @@ export function ArchiveBrowser() {
   if (!projectId) {
     return (
       <div className="archive-browser">
-        <p className="empty-state">No project selected.</p>
+        <div className="empty-state">
+          <span className="empty-state-icon">&#9678;</span>
+          Select or add a project to get started
+        </div>
       </div>
     );
   }
@@ -137,7 +140,10 @@ export function ArchiveBrowser() {
         ) : fetchError ? (
           <p style={{ padding: 8, color: '#e06c6c' }}>{fetchError}</p>
         ) : filteredTasks.length === 0 ? (
-          <p style={{ padding: 8, color: '#8a9ab0' }}>No tasks found.</p>
+          <div className="empty-state">
+            <span className="empty-state-icon">&#9719;</span>
+            No task history for this project yet
+          </div>
         ) : (
           filteredTasks.map((task) => (
             <button

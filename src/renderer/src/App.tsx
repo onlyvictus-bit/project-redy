@@ -212,7 +212,10 @@ export default function App() {
                 </div>
               ))
             ) : (
-              <p className="empty-state">No tasks yet.</p>
+              <div className="empty-state">
+                <span className="empty-state-icon">&#9655;</span>
+                No tasks yet — choose a workflow and run it
+              </div>
             )}
           </section>
         </aside>
@@ -303,7 +306,10 @@ export default function App() {
                     </div>
                   </>
                 ) : (
-                  <p className="empty-state">Select a project to create its archive folder.</p>
+                  <div className="empty-state">
+                    <span className="empty-state-icon">&#9678;</span>
+                    Select or add a project to get started
+                  </div>
                 )}
               </section>
 

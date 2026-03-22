@@ -62,8 +62,11 @@ export function TaskDetailPanel({ task }: TaskDetailPanelProps) {
 
   if (!task) {
     return (
-      <div className="detail-panel detail-panel-empty">
-        <p>Select a task from the left rail to inspect it.</p>
+      <div className="detail-panel-empty">
+        <div className="empty-state">
+          <span className="empty-state-icon">&#9745;</span>
+          Select a task to inspect it
+        </div>
       </div>
     );
   }
@@ -71,7 +74,7 @@ export function TaskDetailPanel({ task }: TaskDetailPanelProps) {
   const selectedArtifact = task.artifacts.find((a) => a.id === selectedArtifactId) ?? task.artifacts[0];
 
   return (
-    <div className="detail-panel">
+    <div className="detail-panel" key={task.id}>
       <div className="detail-summary">
         <div className="detail-summary-header">
           <h2>{task.brief}</h2>

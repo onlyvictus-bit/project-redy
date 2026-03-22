@@ -62,7 +62,7 @@ describe('ArchiveBrowser', () => {
 
     it('shows "No project selected" message', () => {
       render(<ArchiveBrowser />);
-      expect(screen.getByText(/no project selected/i)).toBeInTheDocument();
+      expect(screen.getByText(/select or add a project to get started/i)).toBeInTheDocument();
     });
 
     it('does not call listArchiveTasks', () => {
@@ -112,7 +112,7 @@ describe('ArchiveBrowser', () => {
       render(<ArchiveBrowser />);
 
       await waitFor(() => {
-        expect(screen.getByText(/no tasks found/i)).toBeInTheDocument();
+        expect(screen.getByText(/no task history for this project yet/i)).toBeInTheDocument();
       });
     });
 

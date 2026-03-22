@@ -9,7 +9,11 @@ interface TaskCardProps {
 
 export function TaskCard({ task, isSelected, onSelect, onPromote }: TaskCardProps) {
   return (
-    <article className={`task-card${isSelected ? ' task-card-selected' : ''}`} onClick={onSelect}>
+    <article
+      className={`task-card${isSelected ? ' task-card-selected' : ''}`}
+      data-agent={task.assignedAgents[0]}
+      onClick={onSelect}
+    >
       <div className="task-card-header">
         <h4>{task.brief}</h4>
         <span className={`stage-badge stage-${task.stage}`}>{task.stage}</span>
