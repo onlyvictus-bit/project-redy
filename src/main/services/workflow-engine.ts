@@ -5,6 +5,7 @@ import type {
   AgentId,
   AgentRole,
   ArtifactBundle,
+  CustomWorkflowStep,
   ContinueTaskOptions,
   Finding,
   ProjectRef,
@@ -16,6 +17,7 @@ import type {
 
 import { buildArchitecturePrompt, buildCodingPrompt, buildFixPrompt, buildMonitorPrompt, buildReviewPrompt } from '../utils/prompts';
 import { ConnectorJobError, type AgentConnector } from '../connectors/base';
+import { buildHandoffContext, compressDiff } from './context-transfer';
 import { WorkspaceManager } from './workspace-manager';
 
 interface WorkflowContext {
@@ -53,7 +55,7 @@ export class WorkflowEngine {
       worktreePath: workspace.worktreePath,
       stage: 'brief',
       brief: input.brief,
-      assignedAgents: this.resolveAgents(input.workflowId),
+      assignedAgents: this.resolveAgents(input.workflowId, input.customWorkflowSteps),
       approvalState: 'pending',
       branchName: workspace.branchName,
       findings: [],
@@ -90,6 +92,12 @@ export class WorkflowEngine {
         case 'away-monitor':
           await this.runAwayMonitor(context, controller.signal);
           break;
+        case 'custom': {
+          const steps = input.customWorkflowSteps;
+          if (!steps?.length) throw new Error('Custom workflow has no steps.');
+          await this.runCustomWorkflow(context, steps, 0, controller.signal);
+          break;
+        }
         default:
           throw new Error(`Unsupported workflow ${String(input.workflowId)}`);
       }
@@ -138,6 +146,13 @@ export class WorkflowEngine {
           case 'code-gemini-compare-codex-review':
             await this.runCodeGeminiCodex(context, options.fromStage, controller.signal);
             break;
+          case 'custom': {
+            const customSteps = (task as TaskRun & { _customWorkflowSteps?: CustomWorkflowStep[] })._customWorkflowSteps;
+            if (!customSteps?.length) throw new Error('Custom workflow steps not available for resume.');
+            const fromIndex = typeof task.customStepIndex === 'number' ? task.customStepIndex + 1 : 0;
+            await this.runCustomWorkflow(context, customSteps, fromIndex, controller.signal);
+            break;
+          }
           default:
             throw new Error(`Resume not supported for workflow ${task.workflowId}`);
         }
@@ -151,13 +166,18 @@ export class WorkflowEngine {
           prompt = options.prompt;
         } else {
           switch (options.stage) {
-            case 'fix':
-              prompt = buildFixPrompt(task, task.findings);
+            case 'fix': {
+              const priorCtx = buildHandoffContext(task.artifacts.slice(0, 3));
+              prompt = buildFixPrompt(task, task.findings, priorCtx);
               break;
+            }
             case 'review':
             case 'verify': {
               const diff = await this.workspaceManager.getDiff(task, project);
-              prompt = buildReviewPrompt(task, diff, options.agentId);
+              const priorCtx = options.stage === 'verify'
+                ? buildHandoffContext(task.artifacts.slice(0, 3))
+                : undefined;
+              prompt = buildReviewPrompt(task, compressDiff(diff), options.agentId, priorCtx);
               break;
             }
             case 'code':
@@ -195,16 +215,18 @@ export class WorkflowEngine {
     }
     if (skip <= 1) {
       const diff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'review', 'codex', buildReviewPrompt(context.task, diff, 'codex'), 'reviewer', true, signal);
+      await this.runStep(context, 'review', 'codex', buildReviewPrompt(context.task, compressDiff(diff), 'codex'), 'reviewer', true, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 2 && context.task.findings.length) {
-      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder', false, signal);
+      const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
+      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings, priorCtx), 'coder', false, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 3) {
       const verifyDiff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'tester', true, signal);
+      const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
+      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, compressDiff(verifyDiff), 'codex', priorCtx), 'tester', true, signal);
     }
   }
 
@@ -217,16 +239,18 @@ export class WorkflowEngine {
     }
     if (skip <= 1) {
       const diff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'review', 'gemini', buildReviewPrompt(context.task, diff, 'gemini'), 'architect', true, signal);
+      await this.runStep(context, 'review', 'gemini', buildReviewPrompt(context.task, compressDiff(diff), 'gemini'), 'architect', true, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 2 && context.task.findings.length) {
-      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings), 'coder', false, signal);
+      const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
+      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings, priorCtx), 'coder', false, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 3) {
       const verifyDiff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, verifyDiff, 'codex'), 'reviewer', true, signal);
+      const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
+      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, compressDiff(verifyDiff), 'codex', priorCtx), 'reviewer', true, signal);
     }
   }
 
@@ -278,6 +302,13 @@ export class WorkflowEngine {
     context.recordEvent?.(context.task.id, 'step-started', { stage, agentId, stepId: step.id });
 
     try {
+      // If this agent ran a prior step on the same task and supports session
+      // resumption, pass that session ID so the CLI picks up where it left off
+      // instead of starting a fresh context window.
+      const priorSessionId = connector.profile.capabilities.supportsResume
+        ? context.task.artifacts.find((a) => a.agentId === agentId && a.sessionId && a.exitCode === 0)?.sessionId
+        : undefined;
+
       const beforeDiff = enforceReadOnly ? await this.workspaceManager.getDiff(context.task, context.project) : '';
       const artifact = await connector.runJob({
         prompt,
@@ -286,7 +317,8 @@ export class WorkflowEngine {
         taskId: context.task.id,
         stepId: step.id,
         role,
-        signal
+        signal,
+        resumeSessionId: priorSessionId
       });
       const afterDiff = enforceReadOnly ? await this.workspaceManager.getDiff(context.task, context.project) : '';
 
@@ -355,7 +387,7 @@ export class WorkflowEngine {
     return fallback;
   }
 
-  private resolveAgents(workflowId: StartWorkflowInput['workflowId']): AgentId[] {
+  private resolveAgents(workflowId: StartWorkflowInput['workflowId'], customSteps?: CustomWorkflowStep[]): AgentId[] {
     switch (workflowId) {
       case 'code-review-fix-verify':
         return ['claude', 'codex'];
@@ -365,8 +397,47 @@ export class WorkflowEngine {
         return ['claude', 'codex', 'gemini', 'ollama'];
       case 'away-monitor':
         return ['ollama'];
+      case 'custom': {
+        if (!customSteps?.length) return [];
+        const seen = new Set<AgentId>();
+        const agents: AgentId[] = [];
+        for (const step of customSteps) {
+          if (!seen.has(step.agentId)) {
+            seen.add(step.agentId);
+            agents.push(step.agentId);
+          }
+        }
+        return agents;
+      }
       default:
         throw new Error(`Unsupported workflow ${String(workflowId)}`);
+    }
+  }
+
+  private async runCustomWorkflow(
+    context: WorkflowContext,
+    steps: CustomWorkflowStep[],
+    fromIndex: number,
+    signal?: AbortSignal
+  ): Promise<void> {
+    for (let i = fromIndex; i < steps.length; i++) {
+      const step = steps[i];
+      const prompt = step.promptTemplate.replace('{{brief}}', context.task.brief);
+      const activeRole = this.resolveActiveRole(step.role, 'coder');
+      const enforceReadOnly = step.role === 'reviewer' || step.role === 'tester' || step.role === 'monitor';
+
+      await this.runStep(context, 'code', step.agentId, prompt, activeRole, enforceReadOnly, signal);
+      if (signal?.aborted) return;
+
+      // Halt at approval gate (only if there are more steps remaining)
+      if (step.requiresApproval && i < steps.length - 1) {
+        context.task.stage = 'findings';
+        context.task.approvalState = 'pending';
+        context.task.customStepIndex = i;
+        context.task.updatedAt = new Date().toISOString();
+        context.updateTask(context.task);
+        return;
+      }
     }
   }
 
