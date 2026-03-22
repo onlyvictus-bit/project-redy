@@ -5,6 +5,7 @@ const MAX_TERMINAL_LINES = 5000;
 import type {
   AgentId,
   AgentRole,
+  CustomWorkflow,
   ContinueTaskOptions,
   PromotionAction,
   RunnerKind,
@@ -45,6 +46,10 @@ interface WorkbenchState {
   expandedTerminalId: string | null;
   expandTerminal: (sessionId: string) => void;
   collapseTerminal: () => void;
+  customWorkflows: CustomWorkflow[];
+  listCustomWorkflows: () => Promise<void>;
+  saveCustomWorkflow: (workflow: CustomWorkflow) => Promise<CustomWorkflow | undefined>;
+  deleteCustomWorkflow: (id: string) => Promise<void>;
 }
 
 type StateSetter = (partial: Partial<WorkbenchState> | ((state: WorkbenchState) => Partial<WorkbenchState>)) => void;
@@ -68,10 +73,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   isBusy: false,
   bootstrap: async () => {
     await runAction(set, () => window.workbench.bootstrap(), (snapshot) => {
-      set({ snapshot });
+      set({ snapshot, customWorkflows: snapshot.customWorkflows ?? [] });
     });
   },
-  applySnapshot: (snapshot) => set({ snapshot }),
+  applySnapshot: (snapshot) => set({ snapshot, customWorkflows: snapshot.customWorkflows ?? [] }),
   appendTerminalData: (sessionId, data) =>
     set((state) => {
       const current = state.terminalBuffers[sessionId] ?? '';
@@ -174,4 +179,27 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   expandedTerminalId: null,
   expandTerminal: (sessionId) => set({ expandedTerminalId: sessionId }),
   collapseTerminal: () => set({ expandedTerminalId: null }),
+  customWorkflows: [],
+  listCustomWorkflows: async () => {
+    await runAction(set, () => window.workbench.listCustomWorkflows(), (workflows) => {
+      set({ customWorkflows: workflows });
+    });
+  },
+  saveCustomWorkflow: async (workflow) => {
+    let result: CustomWorkflow | undefined;
+    await runAction(set, () => window.workbench.saveCustomWorkflow(workflow), (saved) => {
+      result = saved;
+    });
+    // Re-list to sync store with any server-side changes
+    await runAction(set, () => window.workbench.listCustomWorkflows(), (workflows) => {
+      set({ customWorkflows: workflows });
+    });
+    return result;
+  },
+  deleteCustomWorkflow: async (id) => {
+    await runAction(set, () => window.workbench.deleteCustomWorkflow(id), () => undefined);
+    await runAction(set, () => window.workbench.listCustomWorkflows(), (workflows) => {
+      set({ customWorkflows: workflows });
+    });
+  },
 }));
