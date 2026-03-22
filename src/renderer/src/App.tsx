@@ -4,6 +4,7 @@ import type { AgentProfile } from '@shared/types';
 import { WORKFLOW_DEFINITIONS } from '@shared/workflows';
 
 import { AgentPanel } from './components/AgentPanel';
+import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { FindingsPanel } from './components/FindingsPanel';
 import { SetupBanner } from './components/SetupBanner';
 import { TaskCard } from './components/TaskCard';
@@ -36,6 +37,7 @@ export default function App() {
   const [brief, setBrief] = useState('Add a safe, testable feature and have Codex review it for bugs.');
   const [workflowId, setWorkflowId] = useState(WORKFLOW_DEFINITIONS[0].id);
   const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:7b');
+  const [showArchiveBrowser, setShowArchiveBrowser] = useState(false);
 
 
   // Keep ollamaModel in sync with the discovered model list.
@@ -170,80 +172,94 @@ export default function App() {
         </section>
 
         <aside className="right-rail">
-          <FindingsPanel task={selectedTask} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button
+              onClick={() => setShowArchiveBrowser((prev) => !prev)}
+              style={{ fontSize: 12, padding: '3px 10px' }}
+            >
+              {showArchiveBrowser ? 'Back to overview' : 'Browse history'}
+            </button>
+          </div>
+          {showArchiveBrowser ? (
+            <ArchiveBrowser />
+          ) : (
+            <>
+              <FindingsPanel task={selectedTask} />
 
-          {/* Ollama model picker lives here for when Ollama is running */}
-          {snapshot.ollama.running ? (
-            <section className="card">
-              <h2>Ollama model</h2>
-              {snapshot.ollama.availableModels && snapshot.ollama.availableModels.length > 0 ? (
-                <select
-                  value={ollamaModel}
-                  onChange={(event) => {
-                    const model = event.target.value;
-                    setOllamaModel(model);
-                    void setOllamaRole(snapshot.agents.ollama.role, model);
-                  }}
-                >
-                  {snapshot.ollama.availableModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={ollamaModel}
-                  onChange={(event) => {
-                    const model = event.target.value;
-                    setOllamaModel(model);
-                    void setOllamaRole(snapshot.agents.ollama.role, model);
-                  }}
-                  placeholder="Model name"
-                />
-              )}
-            </section>
-          ) : null}
+              {/* Ollama model picker lives here for when Ollama is running */}
+              {snapshot.ollama.running ? (
+                <section className="card">
+                  <h2>Ollama model</h2>
+                  {snapshot.ollama.availableModels && snapshot.ollama.availableModels.length > 0 ? (
+                    <select
+                      value={ollamaModel}
+                      onChange={(event) => {
+                        const model = event.target.value;
+                        setOllamaModel(model);
+                        void setOllamaRole(snapshot.agents.ollama.role, model);
+                      }}
+                    >
+                      {snapshot.ollama.availableModels.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={ollamaModel}
+                      onChange={(event) => {
+                        const model = event.target.value;
+                        setOllamaModel(model);
+                        void setOllamaRole(snapshot.agents.ollama.role, model);
+                      }}
+                      placeholder="Model name"
+                    />
+                  )}
+                </section>
+              ) : null}
 
-          <section className="card">
-            <h2>Project Archive</h2>
-            {snapshot.project ? (
-              <>
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={snapshot.project.archiveEnabled}
-                    onChange={(event) => void setProjectArchiveEnabled(event.target.checked)}
-                  />
-                  <span>Auto-save every prompt, log, task, transcript, and artifact for this project.</span>
-                </label>
-                <div className="archive-path">
-                  <strong>Folder</strong>
-                  <code>{snapshot.archive?.path || snapshot.project.archivePath}</code>
-                </div>
-                <p className="archive-meta">
-                  {snapshot.archive?.lastSavedAt
-                    ? `Last saved ${new Date(snapshot.archive.lastSavedAt).toLocaleString()}`
-                    : 'No archive snapshot saved yet.'}
-                </p>
-                <div className="panel-actions">
-                  <button onClick={() => void saveProjectArchive()} disabled={!snapshot.project.archiveEnabled}>
-                    Save now
-                  </button>
-                  <button onClick={() => void openProjectArchive()}>Open folder</button>
-                </div>
-              </>
-            ) : (
-              <p className="empty-state">Select a project to create its archive folder.</p>
-            )}
-          </section>
+              <section className="card">
+                <h2>Project Archive</h2>
+                {snapshot.project ? (
+                  <>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={snapshot.project.archiveEnabled}
+                        onChange={(event) => void setProjectArchiveEnabled(event.target.checked)}
+                      />
+                      <span>Auto-save every prompt, log, task, transcript, and artifact for this project.</span>
+                    </label>
+                    <div className="archive-path">
+                      <strong>Folder</strong>
+                      <code>{snapshot.archive?.path || snapshot.project.archivePath}</code>
+                    </div>
+                    <p className="archive-meta">
+                      {snapshot.archive?.lastSavedAt
+                        ? `Last saved ${new Date(snapshot.archive.lastSavedAt).toLocaleString()}`
+                        : 'No archive snapshot saved yet.'}
+                    </p>
+                    <div className="panel-actions">
+                      <button onClick={() => void saveProjectArchive()} disabled={!snapshot.project.archiveEnabled}>
+                        Save now
+                      </button>
+                      <button onClick={() => void openProjectArchive()}>Open folder</button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="empty-state">Select a project to create its archive folder.</p>
+                )}
+              </section>
 
-          <section className="card">
-            <h2>Notifications</h2>
-            {snapshot.notifications.length ? (
-              snapshot.notifications.map((notification) => <p key={notification}>{notification}</p>)
-            ) : (
-              <p className="empty-state">No notifications yet.</p>
-            )}
-          </section>
+              <section className="card">
+                <h2>Notifications</h2>
+                {snapshot.notifications.length ? (
+                  snapshot.notifications.map((notification) => <p key={notification}>{notification}</p>)
+                ) : (
+                  <p className="empty-state">No notifications yet.</p>
+                )}
+              </section>
+            </>
+          )}
         </aside>
       </main>
 
