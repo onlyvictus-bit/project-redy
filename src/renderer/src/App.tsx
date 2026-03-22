@@ -8,6 +8,7 @@ import { FindingsPanel } from './components/FindingsPanel';
 import { SetupBanner } from './components/SetupBanner';
 import { TaskCard } from './components/TaskCard';
 import { TaskDetailPanel } from './components/TaskDetailPanel';
+import { TerminalOverlay } from './components/TerminalOverlay';
 import { useWorkbenchStore } from './store';
 
 import './styles.css';
@@ -30,6 +31,7 @@ export default function App() {
   const setProjectArchiveEnabled = useWorkbenchStore((state) => state.setProjectArchiveEnabled);
   const saveProjectArchive = useWorkbenchStore((state) => state.saveProjectArchive);
   const openProjectArchive = useWorkbenchStore((state) => state.openProjectArchive);
+  const setOllamaRole = useWorkbenchStore((state) => state.setOllamaRole);
 
   const [brief, setBrief] = useState('Add a safe, testable feature and have Codex review it for bugs.');
   const [workflowId, setWorkflowId] = useState(WORKFLOW_DEFINITIONS[0].id);
@@ -57,10 +59,15 @@ export default function App() {
   }, [appendTerminalData, applySnapshot, bootstrap]);
 
   if (!snapshot) {
-    return <div className="loading-screen">Booting Triad Workbench...</div>;
+    return (
+      <div className="loading-screen">
+        {error ? <p className="error-banner">{error}</p> : <p>Booting Triad Workbench...</p>}
+      </div>
+    );
   }
 
   const selectedTask = snapshot.tasks.find((t) => t.id === selectedTaskId) ?? snapshot.tasks[0];
+  const runnerValue = snapshot.project?.runnerPreference ?? snapshot.agents.claude.runner ?? 'auto';
 
   // Per-workflow readiness: checks the agents actually needed plus git repo requirement.
   const canRun = (() => {
@@ -86,9 +93,10 @@ export default function App() {
           <p>{snapshot.project ? `${snapshot.project.name} - ${snapshot.project.currentBranch || 'no branch'}` : 'No project selected'}</p>
         </div>
         <div className="top-actions">
-          <button onClick={() => void selectProject()}>Open project</button>
+          <button disabled={isBusy} onClick={() => void selectProject()}>Open project</button>
           <select
-            value={snapshot.project?.runnerPreference ?? 'auto'}
+            value={runnerValue}
+            disabled={isBusy}
             onChange={(event) => void setProjectRunner(event.target.value as 'auto' | 'windows' | 'wsl')}
           >
             <option value="auto">Auto runner</option>
@@ -169,13 +177,28 @@ export default function App() {
             <section className="card">
               <h2>Ollama model</h2>
               {snapshot.ollama.availableModels && snapshot.ollama.availableModels.length > 0 ? (
-                <select value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)}>
+                <select
+                  value={ollamaModel}
+                  onChange={(event) => {
+                    const model = event.target.value;
+                    setOllamaModel(model);
+                    void setOllamaRole(snapshot.agents.ollama.role, model);
+                  }}
+                >
                   {snapshot.ollama.availableModels.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
               ) : (
-                <input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} placeholder="Model name" />
+                <input
+                  value={ollamaModel}
+                  onChange={(event) => {
+                    const model = event.target.value;
+                    setOllamaModel(model);
+                    void setOllamaRole(snapshot.agents.ollama.role, model);
+                  }}
+                  placeholder="Model name"
+                />
               )}
             </section>
           ) : null}
@@ -247,6 +270,7 @@ export default function App() {
           {error ? <p className="error-banner">{error}</p> : null}
         </div>
       </footer>
+      <TerminalOverlay />
     </div>
   );
 }
