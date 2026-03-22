@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: — Foundation to Review Center
 status: unknown
-last_updated: "2026-03-22T11:32:00Z"
+last_updated: "2026-03-22T11:44:27Z"
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Current State
@@ -22,13 +22,13 @@ Milestone 1: v0.1 — Foundation to Review Center
 - Phase 3 (Onboarding Hardening): **DONE**
 - Phase 4 (Archive Browser): **DONE** (3/3 plans complete)
 - Phase 5 (Custom Workflow Builder): **DONE** (3/3 plans complete)
-- Phase 6 (Final UX Polish): IN PROGRESS (1/2 plans complete)
+- Phase 6 (Final UX Polish): **DONE** (2/2 plans complete)
 
 ## Current Focus
-Phase 6 (Final UX Polish) in progress. Plan 06-01 complete (CSS dark theme overhaul). Next: Plan 06-02 (React component updates — Wave 2).
+Phase 6 (Final UX Polish) COMPLETE. All 9 plans across all 6 phases complete. Milestone v0.1 fully delivered.
 
 ## Last Validation
-- `npm run typecheck`: PASS (0 errors — 06-01 complete)
+- `npm run typecheck`: PASS (0 errors — 06-02 complete)
 - `npm test`: 181 passed, 5 pre-existing failures in AppController.selectProject (BrowserWindow mock, unrelated to plan)
 - `npm run build`: PASS (28.69 kB CSS bundle — 06-01 complete)
 
@@ -51,6 +51,7 @@ Phase 6 (Final UX Polish) in progress. Plan 06-01 complete (CSS dark theme overh
 - (06-01) --bg-card aliased to var(--bg-surface) in :root so WorkflowBuilder panel renders dark without touching Phase 5 React code
 - (06-01) [data-agent] attribute selectors scope --agent-color injection — avoids per-component JS style binding
 - (06-01) handoff-codex corrected from green #059669 to blue #1955d6; handoff-gemini from #2563EB to teal #0891b2 (agent identity alignment)
+- (06-02) Test assertions updated to match new locked UX copy — tests must reflect locked copy, not old placeholder text
 
 ## Stopped At
-Last session: Completed 06-01-PLAN.md (CSS dark theme overhaul — full dark token system, agent identity, badge colors, animations)
+Last session: Completed 06-02-PLAN.md (React component updates Wave 2 — data-agent attributes, expand button CSS migration, animation key prop, empty state upgrades)
