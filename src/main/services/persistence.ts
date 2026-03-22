@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import Database from 'better-sqlite3';
 
-import type { AgentProfile, ArtifactBundle, ProjectRef, TaskRun } from '@shared/types';
+import type { AgentProfile, ArtifactBundle, CustomWorkflow, CustomWorkflowStep, ProjectRef, TaskRun } from '@shared/types';
 
 export class PersistenceService {
   private db: Database.Database;
@@ -212,6 +212,52 @@ export class PersistenceService {
     return rows.map((row) => JSON.parse(row.artifact_json) as ArtifactBundle);
   }
 
+  loadCustomWorkflows(): CustomWorkflow[] {
+    const rows = this.db
+      .prepare('SELECT * FROM custom_workflows ORDER BY created_at ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id),
+      label: String(row.label),
+      description: String(row.description),
+      mode: String(row.mode) as CustomWorkflow['mode'],
+      stages: [],
+      steps: JSON.parse(String(row.steps_json)) as CustomWorkflowStep[],
+      isCustom: true as const,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    }));
+  }
+
+  saveCustomWorkflow(workflow: CustomWorkflow): CustomWorkflow {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO custom_workflows (id, label, description, mode, steps_json, created_at, updated_at)
+         VALUES (@id, @label, @description, @mode, @stepsJson, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           label = excluded.label,
+           description = excluded.description,
+           mode = excluded.mode,
+           steps_json = excluded.steps_json,
+           updated_at = excluded.updated_at`
+      )
+      .run({
+        id: workflow.id,
+        label: workflow.label,
+        description: workflow.description ?? '',
+        mode: workflow.mode,
+        stepsJson: JSON.stringify(workflow.steps),
+        createdAt: workflow.createdAt ?? now,
+        updatedAt: now
+      });
+    return { ...workflow, updatedAt: now };
+  }
+
+  deleteCustomWorkflow(id: string): void {
+    this.db.prepare('DELETE FROM custom_workflows WHERE id = ?').run(id);
+  }
+
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS projects (
@@ -257,6 +303,16 @@ export class PersistenceService {
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS run_events_task_id ON run_events(task_id);
+
+      CREATE TABLE IF NOT EXISTS custom_workflows (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        mode TEXT NOT NULL,
+        steps_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     this.ensureColumn('projects', 'archive_path', 'ALTER TABLE projects ADD COLUMN archive_path TEXT');
