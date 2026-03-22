@@ -56,7 +56,7 @@ export function HandoffActions({ task, findings }: HandoffActionsProps) {
               mode: 'single-step',
               stage: 'review',
               agentId: 'gemini',
-              role: 'architect'
+              role: 'reviewer'
             });
           }}
         >

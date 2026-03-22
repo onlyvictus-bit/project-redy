@@ -13,3 +13,10 @@ tmp
 build-resources/*.ico
 build-resources/*.icns
 build-resources/*.png
+.triad-workbench/
+tmp-*/
+tmp/
+design-preview/
+*.png
+*.jpg
+triad-*.txt

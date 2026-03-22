@@ -8,6 +8,7 @@ import type {
   RunnerKind
 } from '@shared/types';
 
+import { cleanOutput } from '../utils/agent-protocol';
 import { extractPatch, extractTriadPayload, parseJsonLines, summarizeText } from '../utils/parsing';
 import type { LaunchSpec } from '../services/process-runner';
 import { ProcessRunner } from '../services/process-runner';
@@ -20,6 +21,10 @@ export interface ConnectorJobInput {
   stepId: string;
   role: AgentRole;
   signal?: AbortSignal;
+  /** Session ID from a prior run of the same agent on this task.
+   *  When set, connectors that support resume pass it as --resume <id>
+   *  so the agent retains context from the previous step. */
+  resumeSessionId?: string;
 }
 
 export interface AgentConnector {
@@ -106,8 +111,16 @@ export abstract class BaseConnector implements AgentConnector {
       signal: input.signal
     });
 
-    const raw = `${result.stdout}\n${result.stderr}`.trim();
-    const triad = extractTriadPayload(raw, this.profile.id);
+    const cleaned = cleanOutput(`${result.stdout}\n${result.stderr}`);
+    const triad = extractTriadPayload(cleaned, this.profile.id);
+    const structuredEvents = parseJsonLines(result.stdout);
+
+    // Extract session_id from the stream-json init message (Claude / Gemini).
+    // The init line looks like: {"type":"system","subtype":"init","session_id":"ses_..."}
+    const sessionId = (structuredEvents as Array<Record<string, unknown>>)
+      .find((e) => e['type'] === 'system' && e['subtype'] === 'init')
+      ?.['session_id'] as string | undefined;
+
     const artifact: ArtifactBundle = {
       id: uuid(),
       taskId: input.taskId,
@@ -118,10 +131,10 @@ export abstract class BaseConnector implements AgentConnector {
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
-      structuredEvents: parseJsonLines(result.stdout),
-      summary: triad.summary || summarizeText(raw) || `${this.profile.displayName} returned no output.`,
-      finalMessage: raw,
-      patch: extractPatch(raw),
+      structuredEvents,
+      summary: triad.summary || summarizeText(cleaned) || `${this.profile.displayName} returned no output.`,
+      finalMessage: cleaned,
+      patch: extractPatch(cleaned),
       findings: triad.findings,
       commandRuns: [
         {
@@ -131,14 +144,15 @@ export abstract class BaseConnector implements AgentConnector {
           stderr: result.stderr
         }
       ],
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(sessionId ? { sessionId } : {})
     };
 
     if (result.exitCode !== 0) {
       const reason = result.exitCode === null
         ? `timed out after ${this.getTimeoutMs() / 1000}s`
         : `exited with code ${result.exitCode}`;
-      throw new ConnectorJobError(`${this.profile.displayName} ${reason}. Output: ${raw.slice(0, 500)}`, artifact);
+      throw new ConnectorJobError(`${this.profile.displayName} ${reason}. Output: ${cleaned.slice(0, 500)}`, artifact);
     }
     return artifact;
   }

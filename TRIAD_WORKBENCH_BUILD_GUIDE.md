@@ -83,7 +83,8 @@ Current state:
 - patch inspection view exists
 - findings panel exists
 - approval controls exist
-- misleading handoff buttons are intentionally disabled until a real continue-task backend exists
+- handoff buttons are enabled through `continueTask` single-step dispatch
+- a small saved follow-up remains: align internal workflow-engine execution-only stage parameters with `ResumableStage` and refresh docs
 - renderer component coverage exists for the review-center surface
 
 Recommended implementation:
@@ -104,29 +105,18 @@ Recommended implementation:
 
 ### Phase 3: Onboarding Hardening
 
-Status: next major build target
+Status: done
 
-Goal:
+Delivered:
 
-Make first-run setup reliable even when one or more agents are missing or not logged in.
-
-Needs:
-
-- better install detection
-- better auth verification
-- friendlier status messages
-- environment-aware runner checks for Windows vs WSL
-- Gemini auth mode guidance
-- Ollama model discovery
-
-Desired states per agent:
-
-- missing
-- installed but not ready
-- needs login
-- ready
-- running
-- error
+- deep auth probing per connector: Claude (`auth status`), Codex (native-login exec or `OPENAI_API_KEY`), Gemini (native-login ping or `GOOGLE_API_KEY`), Ollama (HTTP `/api/tags`)
+- Ollama model discovery — `OllamaStatus.availableModels` populated from `/api/tags`, shown as dropdown in UI
+- status-specific guidance messages in `AgentPanel` for all six states: missing, installed, needs-login, ready, running, error
+- status CSS class (`status-<state>`) on each agent panel section for visual differentiation
+- `ProcessRunner.checkWslAvailable()` for WSL environment detection
+- internal `runStep` parameter narrowed from `TaskStage` to `ResumableStage`
+- single-step prompt builder switch made exhaustive over `code | review | fix | verify`
+- 8 new `AgentPanel` renderer tests (20 total, previously 11)
 
 ### Phase 4: Archive Browser
 
@@ -478,6 +468,11 @@ Recommended handoff actions:
 Future rule:
 
 - handoffs should pass structured context, not entire raw transcripts unless requested
+
+Current execution-stage rule:
+
+- `continueTask` single-step dispatch only targets `code`, `review`, `fix`, and `verify`
+- lifecycle-only stages like `brief`, `findings`, `promote`, `done`, and `error` are not valid single-step targets
 
 ### Safety Rules
 

@@ -31,23 +31,25 @@ Implemented:
 - agent grid UI with interactive terminals for CLI agents
 - startup probing for Claude, Codex, Gemini, and Ollama
 - workflow engine for built-in multi-agent flows
+- task-continuation backend (`continueTask`) with resume and single-step dispatch
 - isolated git worktree creation per task run
 - task promotion back to main checkout
 - SQLite persistence
 - per-project archive folder inside `.triad-workbench`
 - Ollama lifecycle reuse and shutdown behavior
 - review-center renderer with task detail, artifact viewer, diff viewer, and findings panel
-- renderer component tests for the review-center surface
+- review-center handoff buttons wired through `continueTask`
+- renderer component tests for the review-center surface and agent panel status display
+- deep auth probing per connector: Claude (`auth status`), Codex (native-login exec or `OPENAI_API_KEY`), Gemini (native-login ping or `GOOGLE_API_KEY`), Ollama (HTTP `/api/tags` with model discovery)
+- `OllamaStatus.availableModels` carries discovered model list to the renderer
+- internal execution-only stage params narrowed to `ResumableStage`; single-step switch exhaustive over `code | review | fix | verify`
+- `ProcessRunner.checkWslAvailable()` for WSL environment detection
 
 Partially implemented:
 
 - approval and review UI is functional but still basic
-- findings display exists, but handoffs are intentionally disabled until task-continuation backend support exists
-- onboarding exists, but deep auth verification can be improved
-
 Not yet fully implemented:
 
-- task-continuation backend for true cross-agent handoffs
 - custom workflow builder
 - archive browser inside the app
 - more polished dashboard styling to match the mockup closely
@@ -352,14 +354,9 @@ If another AI needs to continue building the project, read these first:
 
 Highest-value next block:
 
-1. Improve deep auth and install verification.
-
-After that:
-
-2. Add an archive browser inside the app
-3. Add a task-continuation backend for true cross-agent handoffs
-4. Add a custom workflow builder
-5. Polish the dashboard to match the visual mockup more closely
+1. Add an archive browser inside the app (Phase 4)
+2. Add a custom workflow builder (Phase 5)
+3. Polish the dashboard to match the visual mockup more closely (Phase 6)
 
 ## Current Reality Check
 
@@ -371,6 +368,7 @@ It currently supports:
 - selecting a project
 - probing agents
 - starting built-in workflows
+- continuing existing tasks through `continueTask` handoffs
 - using interactive terminals
 - saving project archive data
 

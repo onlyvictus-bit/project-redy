@@ -60,7 +60,14 @@ export class WorkspaceManager {
 
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
 
-    await this.processRunner.run(
+    if (fs.existsSync(worktreePath)) {
+      throw new Error(
+        `Worktree directory '${worktreePath}' already exists. ` +
+        'A previous session may have left it behind. Remove it manually or restart the app to trigger cleanup.'
+      );
+    }
+
+    const addResult = await this.processRunner.run(
       'git',
       ['worktree', 'add', '-b', branchName, mapPathForRunner(worktreePath, runner), baseBranch],
       {
@@ -68,6 +75,18 @@ export class WorkspaceManager {
         runner
       }
     );
+
+    if (addResult.exitCode !== 0) {
+      const stderr = addResult.stderr.trim();
+      if (stderr.includes('already exists')) {
+        throw new Error(
+          `Branch '${branchName}' already exists. ` +
+          'This can happen if a previous run was interrupted. Delete the branch with `git branch -D ' +
+          `${branchName}\` and try again.`
+        );
+      }
+      throw new Error(`git worktree add failed: ${stderr || addResult.stdout.trim()}`);
+    }
 
     return {
       worktreePath,

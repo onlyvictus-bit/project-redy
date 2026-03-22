@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 
 import type { AgentRole, ArtifactBundle, ProbeResult } from '@shared/types';
 
+import { cleanOutput } from '../utils/agent-protocol';
 import { extractTriadPayload } from '../utils/parsing';
 import { OllamaManager } from '../services/ollama-manager';
 import { BaseConnector, type ConnectorJobInput } from './base';
@@ -61,7 +62,8 @@ export class OllamaConnector extends BaseConnector {
     const model = this.ollamaManager.getStatus().activeModel ?? process.env.TRIAD_OLLAMA_MODEL ?? 'qwen2.5-coder:7b';
     const systemPrompt = ROLE_SYSTEM_PROMPTS[input.role as AgentRole];
     const result = await this.ollamaManager.runChat(model, input.prompt, systemPrompt);
-    const triad = extractTriadPayload(result.response, 'ollama');
+    const cleaned = cleanOutput(result.response);
+    const triad = extractTriadPayload(cleaned, 'ollama');
 
     return {
       id: uuid(),
@@ -75,7 +77,7 @@ export class OllamaConnector extends BaseConnector {
       exitCode: 0,
       structuredEvents: [],
       summary: triad.summary,
-      finalMessage: result.response,
+      finalMessage: cleaned,
       patch: undefined,
       findings: triad.findings,
       commandRuns: [],

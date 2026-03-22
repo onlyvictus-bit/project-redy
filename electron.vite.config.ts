@@ -33,7 +33,8 @@ export default defineConfig({
     build: {
       rollupOptions: {
         output: {
-          entryFileNames: 'index.js'
+          format: 'cjs',
+          entryFileNames: 'index.cjs'
         }
       }
     }

@@ -1,8 +1,20 @@
 # Design: continueTask Backend + Phase 3 Onboarding Hardening
 
 **Date:** 2026-03-15
-**Status:** Approved (spec review passed with fixes applied)
+**Status:** Approved and mostly implemented. Saved next-session follow-up: execution-stage alignment + doc sync.
 **Scope:** Two independent features that share a milestone but touch different files.
+
+---
+
+## Saved Follow-Up Note
+
+- `continueTask` is already implemented in the app.
+- `HandoffActions` are already enabled and routed through `continueTask`.
+- Public `ContinueTaskOptions.single-step.stage` already uses `ResumableStage`.
+- The remaining queued follow-up for the next session is:
+  - narrow internal workflow-engine execution-only stage parameters from `TaskStage` to `ResumableStage`
+  - make single-step prompt selection exhaustive over `code | review | fix | verify`
+  - refresh AI handoff and planning docs so they reflect the current implementation state
 
 ---
 
@@ -10,7 +22,7 @@
 
 ### Problem
 
-Phase 2 HandoffActions buttons are disabled because they called `startWorkflow()`, which always creates a new task + worktree. The user expects "Send to Claude for fix" to continue the *selected* task in its *existing* worktree, not spawn a fresh workflow.
+Historical context: Phase 2 HandoffActions buttons were disabled because they called `startWorkflow()`, which always created a new task + worktree. The user expectation was that "Send to Claude for fix" should continue the *selected* task in its *existing* worktree, not spawn a fresh workflow. That continuation path now exists; the remaining work is the narrower execution-stage alignment note above.
 
 ### Design Decision
 

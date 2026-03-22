@@ -106,6 +106,85 @@ describe('WorkspaceManager.cleanupTaskWorkspace', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: createTaskWorkspace error paths
+// ---------------------------------------------------------------------------
+
+describe('WorkspaceManager.createTaskWorkspace', () => {
+  let tmpDir: string;
+  let processRunner: ReturnType<typeof makeProcessRunner>;
+  let manager: WorkspaceManager;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wm-create-'));
+    processRunner = makeProcessRunner();
+    manager = new WorkspaceManager(processRunner as never, tmpDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('throws a user-friendly error when the worktree directory already exists', async () => {
+    const taskId = 'task-exists';
+    // Pre-create the worktree directory to simulate a crashed previous run
+    fs.mkdirSync(path.join(tmpDir, taskId));
+
+    // HEAD lookup succeeds
+    processRunner.run.mockResolvedValueOnce({ stdout: 'abc123\n', stderr: '', exitCode: 0 });
+
+    await expect(
+      manager.createTaskWorkspace(makeProject(), taskId, 'test brief')
+    ).rejects.toThrow('already exists');
+
+    await expect(
+      manager.createTaskWorkspace(makeProject(), taskId, 'test brief')
+    ).rejects.toThrow('Remove it manually or restart the app');
+  });
+
+  it('throws a branch-collision error when git reports the branch exists', async () => {
+    processRunner.run
+      .mockResolvedValueOnce({ stdout: 'deadbeef\n', stderr: '', exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: "fatal: 'triad/test-brief-task0001' already exists", exitCode: 128 });
+
+    await expect(
+      manager.createTaskWorkspace(makeProject(), 'task-0001', 'test brief')
+    ).rejects.toThrow('already exists');
+  });
+
+  it('includes git branch -D hint in the branch-collision message', async () => {
+    processRunner.run
+      .mockResolvedValueOnce({ stdout: 'deadbeef\n', stderr: '', exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: "fatal: 'triad/test-brief-task0002' already exists", exitCode: 128 });
+
+    await expect(
+      manager.createTaskWorkspace(makeProject(), 'task-0002', 'test brief')
+    ).rejects.toThrow('git branch -D');
+  });
+
+  it('throws a generic error for other git failures', async () => {
+    processRunner.run
+      .mockResolvedValueOnce({ stdout: 'deadbeef\n', stderr: '', exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: '', stderr: 'fatal: not a git repository', exitCode: 128 });
+
+    await expect(
+      manager.createTaskWorkspace(makeProject(), 'task-git-fail', 'fix it')
+    ).rejects.toThrow('git worktree add failed');
+  });
+
+  it('returns workspace info on success', async () => {
+    processRunner.run
+      .mockResolvedValueOnce({ stdout: 'abc123\n', stderr: '', exitCode: 0 })  // rev-parse HEAD
+      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 });          // git worktree add
+
+    const result = await manager.createTaskWorkspace(makeProject(), 'task-ok', 'add feature');
+    expect(result.baseBranch).toBe('main');
+    expect(result.baseCommit).toBe('abc123');
+    expect(result.branchName).toMatch(/^triad\//);
+    expect(result.worktreePath).toContain('task-ok');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: listStaleWorktrees
 // ---------------------------------------------------------------------------
 
