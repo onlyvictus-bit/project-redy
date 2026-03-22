@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: — Foundation to Review Center
 status: in-progress
-last_updated: "2026-03-22T10:31:13Z"
+last_updated: "2026-03-22T10:42:27Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Current State
@@ -21,14 +21,14 @@ Milestone 1: v0.1 — Foundation to Review Center
 - Phase 2 (Review Center): **DONE**
 - Phase 3 (Onboarding Hardening): **DONE**
 - Phase 4 (Archive Browser): **DONE** (3/3 plans complete)
-- Phase 5 (Custom Workflow Builder): IN PROGRESS (2/3 plans complete)
+- Phase 5 (Custom Workflow Builder): **DONE** (3/3 plans complete)
 - Phase 6 (Final UX Polish): PENDING
 
 ## Current Focus
-Phase 5 (Custom Workflow Builder) in progress. Plans 05-01 and 05-02 complete. Next: 05-03 (Renderer UI for custom workflow builder).
+Phase 5 (Custom Workflow Builder) complete. All 3 plans done. Next: Phase 6 (Final UX Polish).
 
 ## Last Validation
-- `npm run typecheck`: PASS (0 errors — all 3 TS2339 stubs from Plan 01 resolved in Plan 02)
+- `npm run typecheck`: PASS (0 errors — 05-03 complete)
 - `npm test`: 181 passed, 5 pre-existing failures in AppController.selectProject (BrowserWindow mock, unrelated to plan)
 - `npm run build`: PASS (clean production bundle — from previous phase)
 
@@ -45,6 +45,9 @@ Phase 5 (Custom Workflow Builder) in progress. Plans 05-01 and 05-02 complete. N
 - (05-02) runCustomWorkflow uses 'code' as ResumableStage sentinel for all custom steps — richer per-role mapping deferred to future phase
 - (05-02) _customWorkflowSteps runtime injection via type-cast in AppController.continueTask() — keeps engine free of persistence dependencies
 - (05-02) snapshot.customWorkflows reloaded from persistence after each CRUD mutation to guarantee consistency
+- (05-03) workflowId state typed explicitly as string (was implicit literal union) to accommodate UUID-based custom workflow IDs from merged list
+- (05-03) canRun default branch handles UUID-keyed custom workflows via customWorkflows.some() — no need to set workflowId='custom' on selection
+- (05-03) CSS variables use light-theme fallbacks (#fff, #d0d8e8) to match existing styles.css light-mode color scheme
 
 ## Stopped At
-Last session: Completed 05-02-PLAN.md (WorkflowEngine custom execution path + AppController CRUD methods and wiring)
+Last session: Completed 05-03-PLAN.md (Renderer UI — WorkflowBuilder modal, store actions, App.tsx wiring for custom workflow builder)

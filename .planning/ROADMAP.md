@@ -40,14 +40,14 @@ Plans:
 - [x] 04-02-PLAN.md — Archive IPC plumbing (4-file contract: ipc.ts → preload → main → controller)
 - [x] 04-03-PLAN.md — ArchiveBrowser component with filters, transcript/prompt/findings/timeline tabs
 
-### Phase 5: Custom Workflow Builder
+### Phase 5: Custom Workflow Builder ✅
 **Goal:** Users create multi-step workflows via a visual editor, save them to SQLite, and run them alongside the 4 built-in workflows.
-**Plans:** 2/3 complete
+**Plans:** 3/3 complete
 
 Plans:
 - [x] 05-01-PLAN.md — Types + IPC plumbing + SQLite (foundation: new types, 3 IPC channels, custom_workflows table, CRUD on PersistenceService, stubs in dev-mock/test-setup)
 - [x] 05-02-PLAN.md — WorkflowEngine + AppController (engine custom execution path, resolveAgents, runCustomWorkflow, approval gate halt/resume, AppController CRUD methods + snapshot hydration)
-- [ ] 05-03-PLAN.md — UI layer (WorkflowBuilder modal, store actions, App.tsx merged list + +/edit/delete/canRun/run-with-steps)
+- [x] 05-03-PLAN.md — UI layer (WorkflowBuilder modal, store actions, App.tsx merged list + +/edit/delete/canRun/run-with-steps)
 
 ### Phase 6: Final UX Polish
 - Dark theme
