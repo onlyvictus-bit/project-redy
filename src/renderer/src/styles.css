@@ -38,7 +38,7 @@ button:hover {
 
 .shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   min-height: 100vh;
 }
 
@@ -180,6 +180,14 @@ button:hover {
   display: grid;
   place-items: center;
   color: #d8e1f0;
+}
+
+.terminal-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
 }
 
 .terminal-input {
@@ -556,6 +564,14 @@ select {
   margin-bottom: 0.5rem;
 }
 
+.handoff-note,
+.handoff-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: #4c5f7c;
+  line-height: 1.5;
+}
+
 .handoff-buttons {
   display: flex;
   flex-direction: column;
@@ -566,6 +582,15 @@ select {
   font-size: 0.8rem;
   padding: 0.5rem 0.75rem;
   text-align: left;
+}
+
+.handoff-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.handoff-btn:disabled:hover {
+  background: inherit;
 }
 
 .handoff-claude { background: #7C3AED; }
@@ -735,4 +760,218 @@ select {
 .task-card-selected {
   border-color: #1955d6;
   box-shadow: 0 0 0 1px #1955d6;
+}
+
+/* ── Setup Banner ──────────────────────────────────────────── */
+.setup-banner {
+  margin: 0 1.5rem 0.5rem;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(25, 85, 214, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(25, 85, 214, 0.07);
+}
+
+.setup-banner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.setup-banner-count {
+  font-size: 0.8rem;
+  color: #4c5f7c;
+}
+
+.setup-agent-cards {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.setup-agent-card {
+  flex: 1;
+  min-width: 130px;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: #f5f7fa;
+  border: 1px solid rgba(18, 32, 51, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.setup-agent-card.status-ready {
+  background: #f0fdf4;
+  border-color: rgba(6, 95, 70, 0.2);
+}
+
+.setup-agent-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.setup-optional-tag {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #4c5f7c;
+  background: #e0e9f5;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+}
+
+.setup-agent-status {
+  font-size: 0.75rem;
+  color: #4c5f7c;
+}
+
+.setup-agent-ready {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #065f46;
+  margin-top: 0.15rem;
+}
+
+.setup-agent-btn {
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: #1955d6;
+  color: white;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.setup-agent-btn:hover {
+  background: #123da0;
+}
+
+.setup-agent-btn-secondary {
+  background: #4c5f7c;
+}
+
+.setup-agent-btn-secondary:hover {
+  background: #374559;
+}
+
+.setup-agent-link {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #1955d6;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── Ollama Personality Buttons ────────────────────────────── */
+.ollama-personalities {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+.personality-btn {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: #edf3fb;
+  color: #122033;
+  border: 1px solid rgba(18, 32, 51, 0.12);
+  cursor: pointer;
+}
+
+.personality-btn:hover {
+  background: #dbe4f0;
+}
+
+.personality-btn-active {
+  background: #1955d6;
+  color: white;
+  border-color: #1955d6;
+}
+
+.personality-btn-active:hover {
+  background: #123da0;
+}
+
+/* ── In-agent Connect / Install ────────────────────────────── */
+.connect-btn {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  background: #1955d6;
+  color: white;
+  border: none;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.connect-btn:hover {
+  background: #123da0;
+}
+
+.install-link {
+  font-size: 0.85rem;
+  color: #1955d6;
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+/* ── Workflow Progress Strip ───────────────────────────────── */
+.workflow-progress {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0 0.5rem;
+  flex-wrap: wrap;
+}
+
+.progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.progress-dot {
+  font-size: 0.7rem;
+}
+
+.progress-label {
+  text-transform: capitalize;
+}
+
+.progress-stage-done {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.progress-stage-running {
+  color: #1955d6;
+  background: #dbe9ff;
+  font-weight: 600;
+}
+
+.progress-stage-upcoming {
+  color: #8b9ab8;
+  background: #f5f7fa;
+}
+
+/* ── Disabled Run Button ───────────────────────────────────── */
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  background: #1955d6;
 }
