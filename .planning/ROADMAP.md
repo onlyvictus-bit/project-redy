@@ -51,7 +51,7 @@ Plans:
 
 ### Phase 6: Final UX Polish
 **Goal:** Complete visual and interaction polish pass — dark theme, agent identity colors, dense terminals, empty states, task selection animation.
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — styles.css complete dark overhaul (CSS token system, all badge/badge/diff colors, agent identity selectors, expand button class, terminal padding, empty state CSS, slide-in keyframe)

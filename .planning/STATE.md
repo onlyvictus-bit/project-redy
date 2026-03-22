@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: — Foundation to Review Center
 status: unknown
-last_updated: "2026-03-22T10:49:23.366Z"
+last_updated: "2026-03-22T11:32:00Z"
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 7
+  completed_phases: 5
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Current State
@@ -22,15 +22,15 @@ Milestone 1: v0.1 — Foundation to Review Center
 - Phase 3 (Onboarding Hardening): **DONE**
 - Phase 4 (Archive Browser): **DONE** (3/3 plans complete)
 - Phase 5 (Custom Workflow Builder): **DONE** (3/3 plans complete)
-- Phase 6 (Final UX Polish): PENDING
+- Phase 6 (Final UX Polish): IN PROGRESS (1/2 plans complete)
 
 ## Current Focus
-Phase 5 (Custom Workflow Builder) complete. All 3 plans done. Next: Phase 6 (Final UX Polish).
+Phase 6 (Final UX Polish) in progress. Plan 06-01 complete (CSS dark theme overhaul). Next: Plan 06-02 (React component updates — Wave 2).
 
 ## Last Validation
-- `npm run typecheck`: PASS (0 errors — 05-03 complete)
+- `npm run typecheck`: PASS (0 errors — 06-01 complete)
 - `npm test`: 181 passed, 5 pre-existing failures in AppController.selectProject (BrowserWindow mock, unrelated to plan)
-- `npm run build`: PASS (clean production bundle — from previous phase)
+- `npm run build`: PASS (28.69 kB CSS bundle — 06-01 complete)
 
 ## Decisions
 - (04-01) Chrome-only overlay pattern: TerminalOverlay is pure chrome (z-index:9999), actual terminal uses terminal-fs CSS class (z-index:9998) — avoids creating second xterm instance
@@ -48,6 +48,9 @@ Phase 5 (Custom Workflow Builder) complete. All 3 plans done. Next: Phase 6 (Fin
 - (05-03) workflowId state typed explicitly as string (was implicit literal union) to accommodate UUID-based custom workflow IDs from merged list
 - (05-03) canRun default branch handles UUID-keyed custom workflows via customWorkflows.some() — no need to set workflowId='custom' on selection
 - (05-03) CSS variables use light-theme fallbacks (#fff, #d0d8e8) to match existing styles.css light-mode color scheme
+- (06-01) --bg-card aliased to var(--bg-surface) in :root so WorkflowBuilder panel renders dark without touching Phase 5 React code
+- (06-01) [data-agent] attribute selectors scope --agent-color injection — avoids per-component JS style binding
+- (06-01) handoff-codex corrected from green #059669 to blue #1955d6; handoff-gemini from #2563EB to teal #0891b2 (agent identity alignment)
 
 ## Stopped At
-Last session: Completed 05-03-PLAN.md (Renderer UI — WorkflowBuilder modal, store actions, App.tsx wiring for custom workflow builder)
+Last session: Completed 06-01-PLAN.md (CSS dark theme overhaul — full dark token system, agent identity, badge colors, animations)
