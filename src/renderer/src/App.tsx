@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import type { AgentProfile } from '@shared/types';
+import type { AgentProfile, CustomWorkflow, WorkflowDefinition } from '@shared/types';
 import { WORKFLOW_DEFINITIONS } from '@shared/workflows';
+import { WorkflowBuilder } from './components/WorkflowBuilder';
 
 import { AgentPanel } from './components/AgentPanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
@@ -33,11 +34,16 @@ export default function App() {
   const saveProjectArchive = useWorkbenchStore((state) => state.saveProjectArchive);
   const openProjectArchive = useWorkbenchStore((state) => state.openProjectArchive);
   const setOllamaRole = useWorkbenchStore((state) => state.setOllamaRole);
+  const customWorkflows = useWorkbenchStore((state) => state.customWorkflows);
+  const saveCustomWorkflow = useWorkbenchStore((state) => state.saveCustomWorkflow);
+  const deleteCustomWorkflow = useWorkbenchStore((state) => state.deleteCustomWorkflow);
 
   const [brief, setBrief] = useState('Add a safe, testable feature and have Codex review it for bugs.');
-  const [workflowId, setWorkflowId] = useState(WORKFLOW_DEFINITIONS[0].id);
+  const [workflowId, setWorkflowId] = useState<string>(WORKFLOW_DEFINITIONS[0].id);
   const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:7b');
   const [showArchiveBrowser, setShowArchiveBrowser] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<CustomWorkflow | undefined>();
 
 
   // Keep ollamaModel in sync with the discovered model list.
@@ -83,9 +89,21 @@ export default function App() {
       case 'code-review-fix-verify': return ready('claude') && ready('codex');
       case 'code-gemini-compare-codex-review': return ready('claude') && ready('gemini') && ready('codex');
       case 'architecture-compare': return ready('claude') && ready('codex') && ready('gemini') && ollamaActive;
-      default: return false;
+      case 'custom':
+        return Boolean(snapshot.project?.isGitRepo);
+      default:
+        // Check if this is a custom workflow UUID (not a built-in WorkflowId)
+        if (customWorkflows.some((w) => w.id === workflowId)) {
+          return Boolean(snapshot.project?.isGitRepo);
+        }
+        return false;
     }
   })();
+
+  const allWorkflows: Array<WorkflowDefinition | CustomWorkflow> = [
+    ...WORKFLOW_DEFINITIONS,
+    ...customWorkflows
+  ];
 
   return (
     <div className="shell">
@@ -118,18 +136,57 @@ export default function App() {
       <main className="layout">
         <aside className="left-rail">
           <section className="card">
-            <h2>Workflows</h2>
+            <div className="workflow-section-header">
+              <h2>Workflows</h2>
+              <button
+                className="workflow-add-btn"
+                title="Create new workflow"
+                onClick={() => {
+                  setEditingWorkflow(undefined);
+                  setShowBuilder(true);
+                }}
+              >
+                +
+              </button>
+            </div>
             <div className="workflow-list">
-              {WORKFLOW_DEFINITIONS.map((workflow) => (
-                <button
-                  key={workflow.id}
-                  className={workflowId === workflow.id ? 'selected' : ''}
-                  onClick={() => setWorkflowId(workflow.id)}
-                >
-                  <strong>{workflow.label}</strong>
-                  <span>{workflow.description}</span>
-                </button>
-              ))}
+              {allWorkflows.map((workflow) => {
+                const isCustom = 'isCustom' in workflow && workflow.isCustom;
+                return (
+                  <button
+                    key={workflow.id}
+                    className={workflowId === workflow.id ? 'selected' : ''}
+                    onClick={() => setWorkflowId(workflow.id)}
+                  >
+                    <strong>{workflow.label}</strong>
+                    <span>{workflow.description}</span>
+                    {isCustom && (
+                      <span className="workflow-custom-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          title="Edit workflow"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingWorkflow(workflow as CustomWorkflow);
+                            setShowBuilder(true);
+                          }}
+                        >
+                          edit
+                        </button>
+                        <button
+                          title="Delete workflow"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteCustomWorkflow(workflow.id);
+                            if (workflowId === workflow.id) setWorkflowId(WORKFLOW_DEFINITIONS[0].id);
+                          }}
+                        >
+                          del
+                        </button>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
@@ -266,19 +323,25 @@ export default function App() {
       <footer className="bottom-dock">
         <div className="composer">
           <div className="composer-header">
-            <span>{WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === workflowId)?.label}</span>
+            <span>{WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === workflowId)?.label ?? allWorkflows.find((w) => w.id === workflowId)?.label}</span>
             {isBusy ? <span className="busy-indicator">Working...</span> : null}
           </div>
           <textarea value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Describe the task for your agents." />
           <div className="composer-actions">
             <button
               disabled={!canRun || isBusy}
-              onClick={() =>
+              onClick={() => {
+                const selectedWorkflow = allWorkflows.find((w) => w.id === workflowId);
+                const isCustom = selectedWorkflow && 'isCustom' in selectedWorkflow && selectedWorkflow.isCustom;
                 void startWorkflow({
                   brief,
-                  workflowId
-                })
-              }
+                  workflowId: isCustom ? 'custom' : workflowId as import('@shared/types').WorkflowId,
+                  ...(isCustom ? {
+                    customWorkflowSteps: (selectedWorkflow as CustomWorkflow).steps,
+                    customWorkflowId: (selectedWorkflow as CustomWorkflow).id
+                  } : {})
+                });
+              }}
             >
               Run workflow
             </button>
@@ -286,6 +349,22 @@ export default function App() {
           {error ? <p className="error-banner">{error}</p> : null}
         </div>
       </footer>
+      {showBuilder && (
+        <WorkflowBuilder
+          onClose={() => {
+            setShowBuilder(false);
+            setEditingWorkflow(undefined);
+          }}
+          onSave={(workflow) => {
+            void saveCustomWorkflow(workflow).then(() => {
+              setShowBuilder(false);
+              setEditingWorkflow(undefined);
+              setWorkflowId(workflow.id);
+            });
+          }}
+          editWorkflow={editingWorkflow}
+        />
+      )}
       <TerminalOverlay />
     </div>
   );
