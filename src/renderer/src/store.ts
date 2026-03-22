@@ -42,6 +42,9 @@ interface WorkbenchState {
   selectedArtifactId?: string;
   selectTask: (taskId: string | undefined) => void;
   selectArtifact: (artifactId: string | undefined) => void;
+  expandedTerminalId: string | null;
+  expandTerminal: (sessionId: string) => void;
+  collapseTerminal: () => void;
 }
 
 type StateSetter = (partial: Partial<WorkbenchState> | ((state: WorkbenchState) => Partial<WorkbenchState>)) => void;
@@ -167,5 +170,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   selectedTaskId: undefined,
   selectedArtifactId: undefined,
   selectTask: (taskId) => set({ selectedTaskId: taskId, selectedArtifactId: undefined }),
-  selectArtifact: (artifactId) => set({ selectedArtifactId: artifactId })
+  selectArtifact: (artifactId) => set({ selectedArtifactId: artifactId }),
+  expandedTerminalId: null,
+  expandTerminal: (sessionId) => set({ expandedTerminalId: sessionId }),
+  collapseTerminal: () => set({ expandedTerminalId: null }),
 }));
