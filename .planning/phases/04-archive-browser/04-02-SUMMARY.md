@@ -73,7 +73,7 @@ Each task was committed atomically:
 1. **Task 1: Add ArchiveTaskDetail type and IPC channels to shared/ipc.ts** - `8650cee` (feat)
 2. **Task 2: Wire both channels through persistence, preload, main, and controller** - `8b9f743` (feat)
 
-**Plan metadata:** (docs commit below)
+**Plan metadata:** `89f0b8c` (docs: complete plan)
 
 ## Files Created/Modified
 - `src/shared/ipc.ts` - Added ArchiveTaskDetail export, ArtifactBundle + TaskRun imports, two WorkbenchApi methods, two IPC_CHANNELS entries
