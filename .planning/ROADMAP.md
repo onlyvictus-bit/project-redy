@@ -50,8 +50,9 @@ Plans:
 - [x] 05-03-PLAN.md — UI layer (WorkflowBuilder modal, store actions, App.tsx merged list + +/edit/delete/canRun/run-with-steps)
 
 ### Phase 6: Final UX Polish
-- Dark theme
-- Agent identity colors
-- Dense terminal visuals
-- Better empty states
-- Smoother task selection flow
+**Goal:** Complete visual and interaction polish pass — dark theme, agent identity colors, dense terminals, empty states, task selection animation.
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — styles.css complete dark overhaul (CSS token system, all badge/badge/diff colors, agent identity selectors, expand button class, terminal padding, empty state CSS, slide-in keyframe)
+- [ ] 06-02-PLAN.md — React component tweaks (AgentPanel data-agent + inline style removal, TaskCard data-agent, TaskDetailPanel animation key + empty state, App.tsx empty states)
