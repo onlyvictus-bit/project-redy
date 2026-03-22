@@ -10,6 +10,7 @@ import {
   type AgentId,
   type AgentRole,
   type ContinueTaskOptions,
+  type CustomWorkflow,
   type PromotionAction,
   type ProjectRef,
   type RunnerKind,
@@ -81,7 +82,8 @@ export class AppController extends EventEmitter {
       terminals: [],
       ollama: this.ollamaManager.getStatus(),
       archive: this.projectArchive.getArchiveSummary(project),
-      notifications: []
+      notifications: [],
+      customWorkflows: this.persistence.loadCustomWorkflows()
     };
 
     this.workflowEngine = new WorkflowEngine(this.workspaceManager, () => this.connectors);
@@ -294,6 +296,14 @@ export class AppController extends EventEmitter {
       }
     );
 
+    // For custom workflows, persist the customWorkflowId on the task so continueTask()
+    // can later look up the workflow's steps from snapshot.customWorkflows.
+    // The renderer passes input.customWorkflowId (the DB UUID) in the startWorkflow IPC call.
+    if (input.workflowId === 'custom' && input.customWorkflowId) {
+      task.customWorkflowId = input.customWorkflowId;
+      this.upsertTask(task);
+    }
+
     this.persistence.appendRunEvent(task.id, 'workflow-finished', { stage: task.stage });
     this.upsertTask(task);
     this.projectArchive.appendEvent(this.snapshot.project, 'workflow-finished', {
@@ -334,9 +344,21 @@ export class AppController extends EventEmitter {
 
       this.persistence.appendRunEvent(task.id, 'workflow-continued', { mode: options.mode });
 
+      // For custom workflows, inject steps onto the task object so WorkflowEngine.continue()
+      // can resume from the correct step index without a DB lookup inside the engine.
+      let taskForEngine = task;
+      if (task.workflowId === 'custom') {
+        const customWorkflow = this.snapshot.customWorkflows?.find(
+          (wf) => wf.id === task.customWorkflowId
+        );
+        if (customWorkflow) {
+          taskForEngine = { ...task, _customWorkflowSteps: customWorkflow.steps } as TaskRun & { _customWorkflowSteps: unknown };
+        }
+      }
+
       const updatedTask = await this.workflowEngine.continue(
         this.snapshot.project,
-        task,
+        taskForEngine as TaskRun,
         options,
         (nextTask) => {
           this.upsertTask(nextTask);
@@ -583,6 +605,23 @@ export class AppController extends EventEmitter {
     const events = this.persistence.loadRunEvents(taskId);
     const artifacts = this.persistence.loadArtifactsForTask(taskId);
     return { task, events, artifacts };
+  }
+
+  listCustomWorkflows(): CustomWorkflow[] {
+    return this.persistence.loadCustomWorkflows();
+  }
+
+  saveCustomWorkflow(workflow: CustomWorkflow): CustomWorkflow {
+    const saved = this.persistence.saveCustomWorkflow(workflow);
+    this.snapshot.customWorkflows = this.persistence.loadCustomWorkflows();
+    this.emitState();
+    return saved;
+  }
+
+  deleteCustomWorkflow(id: string): void {
+    this.persistence.deleteCustomWorkflow(id);
+    this.snapshot.customWorkflows = this.persistence.loadCustomWorkflows();
+    this.emitState();
   }
 
   private upsertTask(task: WorkbenchSnapshot['tasks'][number]): void {
