@@ -40,10 +40,10 @@
 - Environment-aware runner checks (Windows vs WSL)
 - Ollama model discovery
 
-### Archive Browser (Phase 4 — planned)
-- Browse task history inside the app
-- Read transcripts, prompts, artifacts, event timelines
-- Filter by agent, workflow, date, severity
+### Archive Browser (Phase 4 — DONE)
+- [x] Browse task history inside the app (ArchiveBrowser.tsx, 04-03)
+- [x] Read transcripts, prompts, artifacts, event timelines (4-tab detail pane, 04-03)
+- [x] Filter by agent, workflow, date, severity (client-side filter bar, 04-03)
 
 ### Custom Workflow Builder (Phase 5 — planned)
 - User-defined agent chains
