@@ -72,6 +72,9 @@ function wireIpc(nextController: AppController): void {
   ipcMain.handle(IPC_CHANNELS.openProjectArchive, () => nextController.openProjectArchive());
   ipcMain.handle(IPC_CHANNELS.listArchiveTasks, (_event, projectId: string) => nextController.listArchiveTasks(projectId));
   ipcMain.handle(IPC_CHANNELS.getArchiveTaskDetail, (_event, taskId: string) => nextController.getArchiveTaskDetail(taskId));
+  ipcMain.handle(IPC_CHANNELS.listCustomWorkflows, () => nextController.listCustomWorkflows());
+  ipcMain.handle(IPC_CHANNELS.saveCustomWorkflow, (_event, workflow) => nextController.saveCustomWorkflow(workflow));
+  ipcMain.handle(IPC_CHANNELS.deleteCustomWorkflow, (_event, id) => nextController.deleteCustomWorkflow(id));
 }
 
 app.whenReady().then(() => {

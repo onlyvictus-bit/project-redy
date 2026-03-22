@@ -25,6 +25,9 @@ const api: WorkbenchApi = {
   openProjectArchive: () => ipcRenderer.invoke(IPC_CHANNELS.openProjectArchive),
   listArchiveTasks: (projectId) => ipcRenderer.invoke(IPC_CHANNELS.listArchiveTasks, projectId),
   getArchiveTaskDetail: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.getArchiveTaskDetail, taskId),
+  listCustomWorkflows: () => ipcRenderer.invoke(IPC_CHANNELS.listCustomWorkflows),
+  saveCustomWorkflow: (workflow) => ipcRenderer.invoke(IPC_CHANNELS.saveCustomWorkflow, workflow),
+  deleteCustomWorkflow: (id) => ipcRenderer.invoke(IPC_CHANNELS.deleteCustomWorkflow, id),
   onState: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: Awaited<ReturnType<WorkbenchApi['bootstrap']>>) => listener(state);
     ipcRenderer.on(IPC_CHANNELS.stateChanged, wrapped);

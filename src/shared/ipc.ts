@@ -2,6 +2,7 @@ import type {
   AgentId,
   AgentRole,
   ArtifactBundle,
+  CustomWorkflow,
   ContinueTaskOptions,
   PromotionAction,
   ProjectArchiveSummary,
@@ -41,6 +42,9 @@ export interface WorkbenchApi {
   openProjectArchive: () => Promise<ProjectArchiveSummary | undefined>;
   listArchiveTasks: (projectId: string) => Promise<TaskRun[]>;
   getArchiveTaskDetail: (taskId: string) => Promise<ArchiveTaskDetail>;
+  listCustomWorkflows: () => Promise<CustomWorkflow[]>;
+  saveCustomWorkflow: (workflow: CustomWorkflow) => Promise<CustomWorkflow>;
+  deleteCustomWorkflow: (id: string) => Promise<void>;
   onState: (listener: (state: WorkbenchSnapshot) => void) => () => void;
   onTerminalData: (listener: (payload: { sessionId: string; data: string }) => void) => () => void;
 }
@@ -67,6 +71,9 @@ export const IPC_CHANNELS = {
   openProjectArchive: 'workbench:project:open-archive',
   listArchiveTasks: 'workbench:archive:list-tasks',
   getArchiveTaskDetail: 'workbench:archive:get-task-detail',
+  listCustomWorkflows: 'workbench:workflows:list-custom',
+  saveCustomWorkflow: 'workbench:workflows:save-custom',
+  deleteCustomWorkflow: 'workbench:workflows:delete-custom',
   stateChanged: 'workbench:event:state',
   terminalData: 'workbench:event:terminal-data'
 } as const;

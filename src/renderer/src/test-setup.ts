@@ -56,6 +56,9 @@ const workbenchStub: WorkbenchApi = {
   getArchiveTaskDetail: vi.fn(async () => {
     throw new Error('getArchiveTaskDetail not mocked for this test');
   }),
+  listCustomWorkflows: vi.fn(async () => []),
+  saveCustomWorkflow: vi.fn(async (w) => w),
+  deleteCustomWorkflow: vi.fn(async () => undefined),
   onState: vi.fn(() => () => undefined),
   onTerminalData: vi.fn(() => () => undefined)
 };
