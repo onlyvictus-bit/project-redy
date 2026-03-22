@@ -14,11 +14,20 @@ export type AuthMode = 'native-login' | 'api-key' | 'none';
 export type RunnerKind = 'wsl' | 'windows' | 'http-local';
 export type AgentStatus = 'missing' | 'installed' | 'needs-login' | 'ready' | 'running' | 'error';
 export type WorkflowMode = 'orchestrate' | 'direct' | 'parallel' | 'chain';
+
+export interface CustomWorkflowStep {
+  id: string;
+  agentId: AgentId;
+  role: AgentRole;
+  promptTemplate: string;
+  requiresApproval: boolean;
+}
 export type WorkflowId =
   | 'code-review-fix-verify'
   | 'code-gemini-compare-codex-review'
   | 'architecture-compare'
-  | 'away-monitor';
+  | 'away-monitor'
+  | 'custom';
 export type TaskStage =
   | 'brief'
   | 'code'
@@ -111,6 +120,10 @@ export interface ArtifactBundle {
   findings: Finding[];
   commandRuns: CommandRun[];
   createdAt: string;
+  /** CLI session ID returned by stream-json agents (Claude, Gemini).
+   *  Stored so subsequent steps for the same agent can pass --resume <id>
+   *  to avoid re-establishing context from scratch. */
+  sessionId?: string;
 }
 
 export interface TaskStepRecord {
@@ -145,6 +158,8 @@ export interface TaskRun {
   updatedAt: string;
   /** Track whether the worktree is still present and who owns it. */
   worktreeStatus?: 'active' | 'preserved' | 'cleaned';
+  customWorkflowId?: string;
+  customStepIndex?: number;
 }
 
 export interface TerminalSession {
@@ -181,6 +196,7 @@ export interface WorkbenchSnapshot {
   ollama: OllamaStatus;
   archive?: ProjectArchiveSummary;
   notifications: string[];
+  customWorkflows?: CustomWorkflow[];
 }
 
 export interface WorkflowDefinition {
@@ -191,11 +207,21 @@ export interface WorkflowDefinition {
   stages: TaskStage[];
 }
 
+export interface CustomWorkflow extends Omit<WorkflowDefinition, 'id'> {
+  id: string;
+  steps: CustomWorkflowStep[];
+  isCustom: true;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StartWorkflowInput {
   brief: string;
   workflowId: WorkflowId;
   workflowMode?: WorkflowMode;
   agentOverrides?: Partial<Record<AgentId, AgentRole>>;
+  customWorkflowSteps?: CustomWorkflowStep[];
+  customWorkflowId?: string;
 }
 
 export type ContinueTaskOptions =
