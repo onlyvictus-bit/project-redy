@@ -45,7 +45,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Types + IPC plumbing + SQLite (foundation: new types, 3 IPC channels, custom_workflows table, CRUD on PersistenceService, stubs in dev-mock/test-setup)
+- [x] 05-01-PLAN.md — Types + IPC plumbing + SQLite (foundation: new types, 3 IPC channels, custom_workflows table, CRUD on PersistenceService, stubs in dev-mock/test-setup)
 - [ ] 05-02-PLAN.md — WorkflowEngine + AppController (engine custom execution path, resolveAgents, runCustomWorkflow, approval gate halt/resume, AppController CRUD methods + snapshot hydration)
 - [ ] 05-03-PLAN.md — UI layer (WorkflowBuilder modal, store actions, App.tsx merged list + +/edit/delete/canRun/run-with-steps)
 
