@@ -296,6 +296,51 @@ export interface AgentMetricsSummary {
   recentRuns: AgentMetricRecord[];
 }
 
+// ---------------------------------------------------------------------------
+// Findings Fusion
+// ---------------------------------------------------------------------------
+
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type FindingCategory =
+  | 'security'
+  | 'performance'
+  | 'correctness'
+  | 'style'
+  | 'architecture'
+  | 'other';
+
+export interface FusedFinding {
+  id: string;
+  title: string;
+  body: string;
+  severity: FindingSeverity;
+  compositeScore: number; // 0-1, weighted by agent confidence + severity
+  sources: Array<{
+    agentId: AgentId;
+    findingId: string;
+    confidence: number; // 0-1
+    rawSeverity: string;
+  }>;
+  file?: string;
+  line?: number;
+  category: FindingCategory;
+  deduplicated: boolean; // True if merged from multiple agents
+  actionRequired: boolean; // compositeScore > threshold
+}
+
+export interface FusionResult {
+  findings: FusedFinding[];
+  summary: {
+    totalRaw: number;
+    totalFused: number;
+    deduplicatedCount: number;
+    criticalCount: number;
+    actionRequiredCount: number;
+    agentAgreement: number; // 0-1, how much agents agree
+  };
+}
+
 export const DEFAULT_AGENTS: Record<AgentId, AgentProfile> = {
   claude: {
     id: 'claude',
