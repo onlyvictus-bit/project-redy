@@ -160,6 +160,8 @@ export interface TaskRun {
   worktreeStatus?: 'active' | 'preserved' | 'cleaned';
   customWorkflowId?: string;
   customStepIndex?: number;
+  /** True when this task was started in dry-run (preview-only) mode. */
+  dryRun?: boolean;
 }
 
 export interface TerminalSession {
@@ -222,6 +224,17 @@ export interface StartWorkflowInput {
   agentOverrides?: Partial<Record<AgentId, AgentRole>>;
   customWorkflowSteps?: CustomWorkflowStep[];
   customWorkflowId?: string;
+  /**
+   * When true, the workflow runs in preview-only mode:
+   * - All stages use enforceReadOnly=true (existing mechanism in WorkflowEngine.runStep)
+   * - Agent role is forced to 'planner' (read-only)
+   * - Prompt is prefixed with "DRY RUN: Describe what you WOULD do..."
+   * - Stage transitions go to 'done' instead of 'promote' (no worktree changes applied)
+   *
+   * Enforcement location: WorkflowEngine.start() and WorkflowEngine.runStep()
+   * should check this flag and apply the above overrides.
+   */
+  dryRun?: boolean;
 }
 
 export type ContinueTaskOptions =
