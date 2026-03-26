@@ -27,6 +27,7 @@ export type WorkflowId =
   | 'code-gemini-compare-codex-review'
   | 'architecture-compare'
   | 'away-monitor'
+  | 'market-analysis-review'
   | 'custom';
 export type TaskStage =
   | 'brief'

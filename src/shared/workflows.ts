@@ -28,5 +28,12 @@ export const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
     description: 'Keep Ollama in monitor mode for long-running work and surface issues when the session stalls.',
     mode: 'direct',
     stages: ['brief', 'review', 'done']
+  },
+  {
+    id: 'market-analysis-review',
+    label: 'Market Analysis Review',
+    description: 'Ollama analyzes market data, Claude interprets, Codex verifies',
+    mode: 'chain',
+    stages: ['brief', 'review', 'code', 'verify', 'done']
   }
 ];

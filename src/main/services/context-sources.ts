@@ -88,11 +88,16 @@ export class ContextSourceRegistry {
 import { GitLogSource } from './context-sources/git-log-source';
 import { FileTreeSource } from './context-sources/file-tree-source';
 import { PackageInfoSource } from './context-sources/package-info-source';
+import { MarketAnalysisSource } from './context-sources/market-analysis-source';
 
 export function createDefaultRegistry(): ContextSourceRegistry {
   const registry = new ContextSourceRegistry();
   registry.register(new GitLogSource());
   registry.register(new FileTreeSource());
   registry.register(new PackageInfoSource());
+  registry.register(new MarketAnalysisSource(
+    process.env.OPENALGO_ENDPOINT || 'http://localhost:5000',
+    process.env.OPENALGO_API_KEY || '',
+  ));
   return registry;
 }
