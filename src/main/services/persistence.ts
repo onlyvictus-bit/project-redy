@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import Database from 'better-sqlite3';
 
-import type { AgentProfile, ArtifactBundle, CustomWorkflow, CustomWorkflowStep, ProjectRef, TaskRun } from '@shared/types';
+import type { AgentProfile, AgentMetricRecord, ArtifactBundle, CustomWorkflow, CustomWorkflowStep, ProjectRef, TaskRun } from '@shared/types';
 
 export class PersistenceService {
   private db: Database.Database;
@@ -258,6 +258,96 @@ export class PersistenceService {
     this.db.prepare('DELETE FROM custom_workflows WHERE id = ?').run(id);
   }
 
+  // ---------------------------------------------------------------------------
+  // Agent Metrics
+  // ---------------------------------------------------------------------------
+
+  insertMetric(metric: AgentMetricRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO agent_metrics (
+           id, task_id, agent_id, workflow_id, stage, role,
+           started_at, completed_at, duration_ms, exit_code,
+           findings_count, patch_lines_added, patch_lines_removed,
+           prompt_tokens_estimate, success, project_id
+         )
+         VALUES (
+           @id, @taskId, @agentId, @workflowId, @stage, @role,
+           @startedAt, @completedAt, @durationMs, @exitCode,
+           @findingsCount, @patchLinesAdded, @patchLinesRemoved,
+           @promptTokensEstimate, @success, @projectId
+         )`
+      )
+      .run({
+        id: metric.id,
+        taskId: metric.taskId,
+        agentId: metric.agentId,
+        workflowId: metric.workflowId,
+        stage: metric.stage,
+        role: metric.role,
+        startedAt: metric.startedAt,
+        completedAt: metric.completedAt,
+        durationMs: metric.durationMs,
+        exitCode: metric.exitCode,
+        findingsCount: metric.findingsCount,
+        patchLinesAdded: metric.patchLinesAdded,
+        patchLinesRemoved: metric.patchLinesRemoved,
+        promptTokensEstimate: metric.promptTokensEstimate,
+        success: metric.success ? 1 : 0,
+        projectId: metric.projectId ?? null,
+      });
+  }
+
+  queryMetrics(opts?: { agentId?: string; projectId?: string; since?: string; limit?: number }): AgentMetricRecord[] {
+    const conditions: string[] = [];
+    const params: Record<string, unknown> = {};
+
+    if (opts?.agentId) {
+      conditions.push('agent_id = @agentId');
+      params.agentId = opts.agentId;
+    }
+    if (opts?.projectId) {
+      conditions.push('project_id = @projectId');
+      params.projectId = opts.projectId;
+    }
+    if (opts?.since) {
+      conditions.push('started_at >= @since');
+      params.since = opts.since;
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = opts?.limit ? `LIMIT ${opts.limit}` : '';
+    const sql = `SELECT * FROM agent_metrics ${where} ORDER BY started_at DESC ${limit}`;
+
+    const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id),
+      taskId: String(row.task_id),
+      agentId: String(row.agent_id) as AgentMetricRecord['agentId'],
+      workflowId: String(row.workflow_id) as AgentMetricRecord['workflowId'],
+      stage: String(row.stage) as AgentMetricRecord['stage'],
+      role: String(row.role) as AgentMetricRecord['role'],
+      startedAt: String(row.started_at),
+      completedAt: String(row.completed_at),
+      durationMs: Number(row.duration_ms),
+      exitCode: Number(row.exit_code),
+      findingsCount: Number(row.findings_count),
+      patchLinesAdded: Number(row.patch_lines_added),
+      patchLinesRemoved: Number(row.patch_lines_removed),
+      promptTokensEstimate: Number(row.prompt_tokens_estimate),
+      success: Boolean(row.success),
+      projectId: row.project_id ? String(row.project_id) : undefined,
+    }));
+  }
+
+  clearMetrics(projectId?: string): void {
+    if (projectId) {
+      this.db.prepare('DELETE FROM agent_metrics WHERE project_id = ?').run(projectId);
+    } else {
+      this.db.prepare('DELETE FROM agent_metrics').run();
+    }
+  }
+
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS projects (
@@ -313,6 +403,27 @@ export class PersistenceService {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS agent_metrics (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        role TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        exit_code INTEGER NOT NULL,
+        findings_count INTEGER NOT NULL DEFAULT 0,
+        patch_lines_added INTEGER NOT NULL DEFAULT 0,
+        patch_lines_removed INTEGER NOT NULL DEFAULT 0,
+        prompt_tokens_estimate INTEGER NOT NULL DEFAULT 0,
+        success INTEGER NOT NULL DEFAULT 1,
+        project_id TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_metrics_agent ON agent_metrics(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_metrics_project ON agent_metrics(project_id);
     `);
 
     this.ensureColumn('projects', 'archive_path', 'ALTER TABLE projects ADD COLUMN archive_path TEXT');

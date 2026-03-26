@@ -253,6 +253,49 @@ export interface ParsedTriadPayload {
   notes?: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Agent Metrics
+// ---------------------------------------------------------------------------
+
+export interface AgentMetricRecord {
+  id: string;
+  taskId: string;
+  agentId: AgentId;
+  workflowId: WorkflowId;
+  stage: TaskStage;
+  role: ActiveAgentRole;
+  startedAt: string; // ISO
+  completedAt: string; // ISO
+  durationMs: number;
+  exitCode: number;
+  findingsCount: number;
+  patchLinesAdded: number;
+  patchLinesRemoved: number;
+  promptTokensEstimate: number;
+  success: boolean;
+  projectId?: string;
+}
+
+export interface AgentMetricsSummary {
+  totalRuns: number;
+  successRate: number; // 0-1
+  avgDurationMs: number;
+  p95DurationMs: number;
+  totalFindings: number;
+  byAgent: Record<string, {
+    runs: number;
+    successRate: number;
+    avgDurationMs: number;
+    avgFindings: number;
+  }>;
+  byWorkflow: Record<string, {
+    runs: number;
+    successRate: number;
+    avgDurationMs: number;
+  }>;
+  recentRuns: AgentMetricRecord[];
+}
+
 export const DEFAULT_AGENTS: Record<AgentId, AgentProfile> = {
   claude: {
     id: 'claude',
