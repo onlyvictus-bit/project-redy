@@ -1,64 +1,230 @@
 # Triad Workbench
 
-CLI-native multi-agent coding workbench for:
+Local-first, CLI-native multi-agent coding workbench for:
 
 - Claude Code
 - Codex CLI
 - Gemini CLI
 - Ollama
 
-## What It Does
+Triad Workbench is an Electron desktop app for running coding agents safely in one place. It uses isolated git worktrees, a review-first workflow, and a per-project archive so you can inspect what each agent actually did before promoting changes back to your main checkout.
 
-Triad Workbench is a local Electron desktop app that orchestrates installed coding agents through their own CLIs or local runtime. It is designed around an isolated git-worktree workflow:
+![Triad Workbench preview](./triad-workbench-preview.png)
 
-- Claude as the main coder
-- Codex as reviewer/tester
-- Gemini as an optional free reviewer, architect, or coder
-- Ollama as a local monitor, tester, architect, developer, or off
+## Why This Project Exists
 
-For a full AI handoff and implementation map, read [TRIAD_WORKBENCH_AI_CONTEXT.md](./TRIAD_WORKBENCH_AI_CONTEXT.md).
+Most AI coding setups break down in the same places:
 
-## Current v0.1 Scope
+- too many tabs and terminals
+- unclear separation between coding and review
+- agents writing directly into the main checkout
+- no durable record of prompts, logs, patches, or findings
 
-- Electron + React + Vite desktop shell
-- Agent grid with live terminal support for CLI agents
-- Agent probing and onboarding states
-- Built-in workflow templates
-- Isolated worktree creation per task run
-- SQLite persistence for projects, agent profiles, tasks, and artifacts
-- Per-project `.triad-workbench` archive folder for snapshots, prompts, stdout/stderr logs, diffs, task JSON, and terminal transcripts
-- Ollama lifecycle manager with reuse and shutdown support
-- Promotion flow from task worktree back to the main checkout
+Triad Workbench is designed to fix that with a local mission-control workflow:
 
-## Scripts
+1. Open a real git project
+2. Connect the agents you want to use
+3. Run a built-in workflow inside an isolated worktree
+4. Review findings, logs, and diffs
+5. Explicitly promote the result
 
-- `npm install`
-- `npm run dev`
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
+## Core Features
 
-## Notes
+- Electron + React desktop shell
+- Agent grid for Claude, Codex, Gemini, and Ollama
+- Windows and WSL runner support
+- In-app agent probing and onboarding states
+- Interactive terminals for CLI agents
+- Built-in multi-agent workflows
+- Isolated git worktree per task
+- SQLite persistence for projects, tasks, artifacts, and profiles
+- Per-project `.triad-workbench` archive for prompts, logs, diffs, transcripts, and snapshots
+- Review center with findings, artifacts, diffs, and promotion actions
 
-- The app expects external tools like `claude`, `codex`, `gemini`, and optionally `ollama` to be installed on the machine or available in the selected runner environment.
-- The default UX is `WSL-first` in concept, but the current auto runner fallback is conservative and uses Windows unless you explicitly switch the project to WSL.
-- Ollama is reused if a daemon is already running. If the app starts Ollama itself, it can also stop it again to free VRAM.
-- Each selected project can auto-save AI activity into `<project>/.triad-workbench`, and the UI includes `Save now` plus `Open folder` actions for that archive.
+## Built-In Workflows
 
-## Planning
+- `Code -> Review -> Fix -> Verify`
+  - Claude writes
+  - Codex reviews
+  - Claude fixes
+  - Codex verifies
+- `Code -> Gemini Compare -> Codex Review`
+  - Claude writes
+  - Gemini critiques
+  - Codex reviews
+- `Architecture Compare`
+  - Compare architecture suggestions from Claude, Codex, Gemini, and Ollama
+- `Away Monitor`
+  - Use Ollama as a local monitor for longer-running work
 
-- `.planning/` is the canonical Claude GSD planning directory (tracked in git)
-- `.triad-workbench/` is per-project app archive storage (runtime, not planning)
-- `docs/superpowers/plans/` is a human-readable mirror of `.planning/` phase docs
+## How It Works
 
-Scripts:
-- `npm run planning:check` — verify required `.planning/` files exist
-- `npm run planning:sync` — regenerate mirrored phase docs in `docs/superpowers/plans/`
+### Main Safety Model
 
-If GSD reports `[E001] .planning/ directory not found`, run `npm run planning:check` to verify the bootstrap.
+- Every task gets its own git worktree
+- Agent changes stay inside that worktree
+- Review happens before promotion
+- `Apply to main` is an explicit user action
 
-## AI Docs
+### Agent Roles
+
+- `Claude Code`
+  - main coder and fix pass
+- `Codex CLI`
+  - reviewer and verifier
+- `Gemini CLI`
+  - architecture / critique / compare support
+- `Ollama`
+  - local guide / tester / developer / monitor support
+
+### Archive Model
+
+Each project can save runtime evidence into:
+
+```text
+<project>/.triad-workbench
+```
+
+That archive can contain:
+
+- snapshots
+- task JSON
+- artifact JSON
+- prompts
+- stdout / stderr logs
+- diffs
+- terminal transcripts
+- event timelines
+
+## Getting Started
+
+### Prerequisites
+
+Install these locally on the machine or selected runner:
+
+- `claude`
+- `codex`
+- `gemini`
+- optionally `ollama`
+
+### Development
+
+```powershell
+npm install
+npm run dev
+```
+
+### Validation
+
+```powershell
+npm run typecheck
+npm test
+npm run build
+```
+
+## Using Triad On An Existing Project
+
+1. Open a real git repository with `Open project`
+2. Set the correct runner: `Windows`, `WSL`, or `Auto`
+3. Click `Probe agents`
+4. Connect any missing or logged-out agents
+5. Choose a workflow
+6. Write a small task brief
+7. Click `Run workflow`
+8. Review the results
+9. Choose:
+   - `Apply to main`
+   - `Keep worktree`
+   - `Open task branch`
+
+## Starting A New Project From Scratch
+
+Create a small git-backed project before using Triad:
+
+```powershell
+mkdir my-small-app
+cd my-small-app
+git init
+npm init -y
+git add .
+git commit -m "Initial scaffold"
+```
+
+Then:
+
+1. Open that folder in Triad
+2. Connect Claude and Codex first
+3. Use `Code -> Review -> Fix -> Verify`
+4. Start with a very small brief
+
+Example:
+
+```text
+Create a TypeScript CLI todo app with add, list, and done commands.
+Store data in a local JSON file.
+Add Vitest tests for the main flows.
+Keep the implementation simple and readable.
+```
+
+## Repository Guides
 
 - [TRIAD_WORKBENCH_AI_CONTEXT.md](./TRIAD_WORKBENCH_AI_CONTEXT.md)
 - [TRIAD_WORKBENCH_BUILD_GUIDE.md](./TRIAD_WORKBENCH_BUILD_GUIDE.md)
 - [TRIAD_WORKBENCH_SOURCE_REFERENCE.md](./TRIAD_WORKBENCH_SOURCE_REFERENCE.md)
+- [docs/USER_GUIDE.md](./docs/USER_GUIDE.md)
+- [docs/slides/triad-workbench-user-guide.pptx](./docs/slides/triad-workbench-user-guide.pptx)
+- [docs/slides/triad-workbench-client-demo.pptx](./docs/slides/triad-workbench-client-demo.pptx)
+- [docs/slides/triad-workbench-beginner-5-slide.pptx](./docs/slides/triad-workbench-beginner-5-slide.pptx)
+- [docs/slides/triad-workbench-team-training.pptx](./docs/slides/triad-workbench-team-training.pptx)
+
+## Planning And Project Structure
+
+- `.planning/`
+  - canonical planning docs tracked in git
+- `.triad-workbench/`
+  - per-project runtime archive storage
+- `docs/superpowers/plans/`
+  - human-readable mirror of planning docs
+
+Useful scripts:
+
+- `npm run planning:check`
+- `npm run planning:sync`
+
+## Tech Stack
+
+- Electron 37
+- React 19
+- Vite / electron-vite
+- TypeScript 5
+- Zustand
+- better-sqlite3
+- node-pty
+- xterm.js
+
+## Current Scope
+
+Triad Workbench is already a working scaffold, but it is still evolving. It is best suited today for:
+
+- small to medium coding tasks
+- safe review-driven development
+- comparing multiple coding agents
+- keeping an evidence trail of AI work
+
+It is not yet intended to be:
+
+- a full per-agent chat product
+- a one-shot giant app generator
+- a no-review auto-merge workflow
+
+## Contributing
+
+Please read:
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [SECURITY.md](./SECURITY.md)
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).

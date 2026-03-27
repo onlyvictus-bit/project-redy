@@ -19,4 +19,8 @@ tmp/
 design-preview/
 *.png
 *.jpg
+!triad-workbench-preview.png
 triad-*.txt
+.claude/
+repro*.cjs
+tmp-gemini-screen-reader.txt
