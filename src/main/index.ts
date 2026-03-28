@@ -4,6 +4,7 @@ import path from 'node:path';
 import { IPC_CHANNELS } from '@shared/ipc';
 
 import { AppController } from './app-controller';
+import { startHttpApi } from './http-api';
 
 let controller: AppController | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -82,6 +83,7 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow();
   wireIpc(controller);
   controller.registerQuitHandlers();
+  startHttpApi(controller);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && controller) {

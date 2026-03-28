@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import { KnowledgeService } from './knowledge-service';
 
 import type {
   ActiveAgentRole,
@@ -26,23 +27,28 @@ interface WorkflowContext {
   updateTask: (task: TaskRun) => void;
   appendArtifact: (artifact: ArtifactBundle) => void;
   recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void;
+  agentOverrides?: StartWorkflowInput['agentOverrides'];
 }
 
 const RESUMABLE_STAGE_ORDER: ResumableStage[] = ['code', 'review', 'fix', 'verify'];
 
 export class WorkflowEngine {
   private readonly activeControllers = new Map<string, AbortController>();
+  private readonly knowledgeService: KnowledgeService;
 
   constructor(
     private readonly workspaceManager: WorkspaceManager,
     private readonly connectors: () => Record<AgentId, AgentConnector>
-  ) {}
+  ) {
+    this.knowledgeService = new KnowledgeService();
+  }
 
   cancel(taskId: string): void {
     this.activeControllers.get(taskId)?.abort();
   }
 
   async start(project: ProjectRef, input: StartWorkflowInput, updateTask: (task: TaskRun) => void, appendArtifact: (artifact: ArtifactBundle) => void, recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void): Promise<TaskRun> {
+    this.knowledgeService.setProjectRoot(project.rootPath);
     const taskId = uuid();
     const workspace = await this.workspaceManager.createTaskWorkspace(project, taskId, input.brief);
     const task: TaskRun = {
@@ -73,7 +79,8 @@ export class WorkflowEngine {
       task,
       updateTask,
       appendArtifact,
-      recordEvent
+      recordEvent,
+      agentOverrides: input.agentOverrides
     };
 
     const controller = new AbortController();
@@ -127,12 +134,14 @@ export class WorkflowEngine {
     appendArtifact: (artifact: ArtifactBundle) => void,
     recordEvent?: (taskId: string, eventType: string, payload: Record<string, unknown>) => void
   ): Promise<TaskRun> {
+    this.knowledgeService.setProjectRoot(project.rootPath);
     const context: WorkflowContext = {
       project,
       task,
       updateTask,
       appendArtifact,
-      recordEvent
+      recordEvent,
+      agentOverrides: undefined
     };
 
     const controller = new AbortController();
@@ -168,7 +177,8 @@ export class WorkflowEngine {
           switch (options.stage) {
             case 'fix': {
               const priorCtx = buildHandoffContext(task.artifacts.slice(0, 3));
-              prompt = buildFixPrompt(task, task.findings, priorCtx);
+              const knowledgeCtx = await this.knowledgeService.getKnowledgeContext(task.errorMessage || '');
+              prompt = buildFixPrompt(task, task.findings, priorCtx) + knowledgeCtx;
               break;
             }
             case 'review':
@@ -208,25 +218,30 @@ export class WorkflowEngine {
 
   private async runCodeReviewFixVerify(context: WorkflowContext, fromStage?: ResumableStage, signal?: AbortSignal): Promise<void> {
     const skip = fromStage ? RESUMABLE_STAGE_ORDER.indexOf(fromStage) : 0;
+    const overrides = context.agentOverrides || {};
 
     if (skip <= 0) {
-      await this.runStep(context, 'code', 'claude', buildCodingPrompt(context.task), 'coder', false, signal);
+      const agentId = (Object.keys(overrides).find(k => overrides[k as AgentId] === 'coder' || overrides[k as AgentId] === 'developer') as AgentId) || 'claude';
+      await this.runStep(context, 'code', agentId, buildCodingPrompt(context.task), 'coder', false, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 1) {
+      const agentId = (Object.keys(overrides).find(k => overrides[k as AgentId] === 'reviewer' || overrides[k as AgentId] === 'architect') as AgentId) || 'codex';
       const diff = await this.workspaceManager.getDiff(context.task, context.project);
-      await this.runStep(context, 'review', 'codex', buildReviewPrompt(context.task, compressDiff(diff), 'codex'), 'reviewer', true, signal);
+      await this.runStep(context, 'review', agentId, buildReviewPrompt(context.task, compressDiff(diff), agentId), 'reviewer', true, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 2 && context.task.findings.length) {
+      const agentId = (Object.keys(overrides).find(k => overrides[k as AgentId] === 'coder' || overrides[k as AgentId] === 'developer') as AgentId) || 'claude';
       const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
-      await this.runStep(context, 'fix', 'claude', buildFixPrompt(context.task, context.task.findings, priorCtx), 'coder', false, signal);
+      await this.runStep(context, 'fix', agentId, buildFixPrompt(context.task, context.task.findings, priorCtx), 'coder', false, signal);
       if (signal?.aborted) return;
     }
     if (skip <= 3) {
+      const agentId = (Object.keys(overrides).find(k => overrides[k as AgentId] === 'tester' || overrides[k as AgentId] === 'reviewer') as AgentId) || 'codex';
       const verifyDiff = await this.workspaceManager.getDiff(context.task, context.project);
       const priorCtx = buildHandoffContext(context.task.artifacts.slice(0, 3));
-      await this.runStep(context, 'verify', 'codex', buildReviewPrompt(context.task, compressDiff(verifyDiff), 'codex', priorCtx), 'tester', true, signal);
+      await this.runStep(context, 'verify', agentId, buildReviewPrompt(context.task, compressDiff(verifyDiff), agentId, priorCtx), 'tester', true, signal);
     }
   }
 
@@ -320,6 +335,20 @@ export class WorkflowEngine {
         signal,
         resumeSessionId: priorSessionId
       });
+
+      // --- LEARNING LOOP ---
+      if (stage === 'fix' && artifact.exitCode === 0) {
+        await this.knowledgeService.saveLesson({
+          taskId: context.task.id,
+          agentId: agentId,
+          error: context.task.errorMessage || 'Unknown Error',
+          rootCause: 'Successfully resolved in fix stage.',
+          solution: artifact.summary,
+          files: []
+        });
+      }
+      // --- END LEARNING LOOP ---
+
       const afterDiff = enforceReadOnly ? await this.workspaceManager.getDiff(context.task, context.project) : '';
 
       if (enforceReadOnly && beforeDiff !== afterDiff) {

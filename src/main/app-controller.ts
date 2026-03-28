@@ -199,6 +199,32 @@ export class AppController extends EventEmitter {
     return project;
   }
 
+  /** Headless project selection — set project by path without file dialog. */
+  async setProject(projectPath: string): Promise<WorkbenchSnapshot> {
+    const runnerPreference = this.snapshot.project?.runnerPreference ?? 'auto';
+    const resolvedRunner = await this.resolveAutoRunner(runnerPreference);
+    const project = await this.workspaceManager.inspectProject(projectPath, runnerPreference, resolvedRunner);
+    this.terminalManager.stopAll();
+    this.snapshot.terminals = this.terminalManager.list();
+    this.snapshot.project = project;
+    this.snapshot.tasks = this.persistence.loadTasks(project.id);
+    this.persistence.saveProject(project);
+    if (project.resolvedRunner) {
+      for (const connector of Object.values(this.connectors)) {
+        if (connector.profile.id !== 'ollama') {
+          connector.profile.runner = project.resolvedRunner;
+          this.persistence.saveAgentProfile(connector.profile);
+        }
+      }
+    }
+    this.snapshot.archive = project.archiveEnabled
+      ? this.projectArchive.ensureProject(project)
+      : this.projectArchive.getArchiveSummary(project);
+    this.pushNotification(`Loaded ${project.name} (headless).`);
+    this.emitState();
+    return this.snapshot;
+  }
+
   async probeAgents(deep = false): Promise<WorkbenchSnapshot> {
     for (const connector of Object.values(this.connectors)) {
       const result = await connector.probe(deep);

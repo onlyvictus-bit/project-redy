@@ -1,9 +1,14 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { v4 as uuid } from 'uuid';
 
+import type { ArtifactBundle } from '@shared/types';
 import type { LaunchSpec } from '../services/process-runner';
-import { BaseConnector, type ConnectorJobInput } from './base';
+import { BaseConnector, ConnectorJobError, type ConnectorJobInput } from './base';
+import { cleanOutput } from '../utils/agent-protocol';
+import { extractPatch, extractTriadPayload, parseJsonLines, summarizeText } from '../utils/parsing';
 
 export class GeminiConnector extends BaseConnector {
   protected override async performDeepAuthProbe(): Promise<string> {
@@ -29,9 +34,6 @@ export class GeminiConnector extends BaseConnector {
       return 'Authentication environment detected. Ready to run.';
     }
 
-    // Current Gemini CLI auth is selected from the interactive `gemini` session
-    // and persisted into ~/.gemini/settings.json as security.auth.selectedType.
-    // There is no stable `gemini auth status` command on the installed CLI.
     try {
       if (fs.existsSync(settingsPath)) {
         const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
@@ -51,10 +53,6 @@ export class GeminiConnector extends BaseConnector {
   }
 
   getAuthLaunchSpec(): LaunchSpec {
-    // Gemini's Ink UI can render poorly inside embedded PTYs on Windows.
-    // `--screen-reader` gives a more text-oriented experience, and setting the
-    // default auth type makes a single Enter key enough for the common Google
-    // sign-in path while still allowing the user to change the selection.
     return {
       command: this.profile.binaryOrEndpoint,
       args: ['--screen-reader'],
@@ -77,11 +75,116 @@ export class GeminiConnector extends BaseConnector {
   }
 
   protected override getTimeoutMs(): number {
-    // Gemini runs architecture and review passes; 3 minutes covers thorough analysis.
     return 180_000;
   }
 
+  /**
+   * Override runJob to pipe prompt via stdin to avoid cmd.exe quoting issues.
+   * Gemini CLI: `echo <prompt> | gemini -p "" --output-format stream-json`
+   * The -p flag triggers headless mode, stdin provides the prompt content.
+   */
+  override async runJob(input: ConnectorJobInput): Promise<ArtifactBundle> {
+    const MAX_PROMPT_BYTES = 1_000_000;
+    if (Buffer.byteLength(input.prompt, 'utf8') > MAX_PROMPT_BYTES) {
+      throw new Error(`Prompt exceeds maximum size of ${MAX_PROMPT_BYTES / 1000}KB.`);
+    }
+
+    const timeoutMs = this.getTimeoutMs();
+    const binary = this.profile.detectedPath || this.profile.binaryOrEndpoint;
+    const resumeArgs = input.resumeSessionId ? ['--resume', input.resumeSessionId] : [];
+    const approvalMode = input.role === 'coder' || input.role === 'developer' ? 'auto_edit' : 'plan';
+
+    // Write prompt to temp file, pipe via Node stdin to gemini
+    const tmpFile = path.join(os.tmpdir(), `triad-gemini-${input.stepId}.txt`);
+    fs.writeFileSync(tmpFile, input.prompt, 'utf8');
+
+    const result = await new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
+      // Gemini reads from stdin when invoked without -p flag.
+      // Use cmd.exe /c with separate args (proven to work in repro2.cjs Test B).
+      const child = spawn('cmd.exe', ['/c', 'type', tmpFile, '|', binary, '--approval-mode', approvalMode, '--output-format', 'stream-json', ...resumeArgs], {
+        cwd: input.cwd,
+        env: { ...process.env },
+        shell: false,
+        windowsHide: true,
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timer: NodeJS.Timeout | undefined;
+
+      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+      if (timeoutMs) {
+        timer = setTimeout(() => {
+          if (child.pid) {
+            spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { shell: false, windowsHide: true });
+          }
+        }, timeoutMs);
+      }
+
+      if (input.signal) {
+        const killChild = (): void => {
+          if (timer) clearTimeout(timer);
+          if (child.pid) {
+            spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { shell: false, windowsHide: true });
+          }
+        };
+        if (input.signal.aborted) killChild();
+        else input.signal.addEventListener('abort', killChild, { once: true });
+      }
+
+      child.once('close', (exitCode) => {
+        if (timer) clearTimeout(timer);
+        try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+        resolve({ stdout, stderr, exitCode });
+      });
+    });
+
+    const cleaned = cleanOutput(`${result.stdout}\n${result.stderr}`);
+    const triad = extractTriadPayload(cleaned, this.profile.id);
+    const structuredEvents = parseJsonLines(result.stdout);
+
+    const sessionId = (structuredEvents as Array<Record<string, unknown>>)
+      .find((e) => e['type'] === 'system' && e['subtype'] === 'init')
+      ?.['session_id'] as string | undefined;
+
+    const artifact: ArtifactBundle = {
+      id: uuid(),
+      taskId: input.taskId,
+      stepId: input.stepId,
+      agentId: this.profile.id,
+      role: input.role,
+      prompt: input.prompt,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      structuredEvents,
+      summary: triad.summary || summarizeText(cleaned) || `${this.profile.displayName} returned no output.`,
+      finalMessage: cleaned,
+      patch: extractPatch(cleaned),
+      findings: triad.findings,
+      commandRuns: [{
+        command: `${binary} --approval-mode ${approvalMode} --output-format stream-json (stdin pipe)`,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr
+      }],
+      createdAt: new Date().toISOString(),
+      ...(sessionId ? { sessionId } : {})
+    };
+
+    if (result.exitCode !== 0) {
+      const reason = result.exitCode === null
+        ? `timed out after ${timeoutMs / 1000}s`
+        : `exited with code ${result.exitCode}`;
+      throw new ConnectorJobError(`${this.profile.displayName} ${reason}. Output: ${cleaned.slice(0, 500)}`, artifact);
+    }
+    return artifact;
+  }
+
   protected getScriptedCommand(input: ConnectorJobInput) {
+    // Fallback — not used since runJob is overridden
     const args = ['-p', input.prompt, '--output-format', 'stream-json'];
     if (input.resumeSessionId) {
       args.push('--resume', input.resumeSessionId);

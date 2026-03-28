@@ -44,12 +44,12 @@ export class MarketAnalysisSource implements ContextSource {
 
     if (!symbol) return [];
 
+    // Fetch AI analysis (independent — failure here should not block market analysis)
     try {
-      // Fetch AI analysis
       const analysisResp = await fetch(`${this.endpoint}/api/v1/agent/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apikey: this.apiKey, symbol, exchange, interval: '1d' }),
+        body: JSON.stringify({ apikey: this.apiKey, symbol, exchange, interval: 'D' }),
         signal: AbortSignal.timeout(30_000),
       });
       const analysis = (await analysisResp.json()) as {
@@ -78,12 +78,16 @@ export class MarketAnalysisSource implements ContextSource {
           metadata: { symbol, exchange, signal: d.signal, confidence: d.confidence },
         });
       }
+    } catch {
+      // Non-fatal: AI analysis is optional context
+    }
 
-      // Fetch market analysis report (trend + momentum + OI)
+    // Fetch market analysis report (independent — runs even if AI analysis failed)
+    try {
       const marketResp = await fetch(`${this.endpoint}/api/v1/market-analysis/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apikey: this.apiKey, symbol, exchange, interval: '1d' }),
+        body: JSON.stringify({ apikey: this.apiKey, symbol, exchange, interval: 'D' }),
         signal: AbortSignal.timeout(30_000),
       });
       const market = (await marketResp.json()) as {

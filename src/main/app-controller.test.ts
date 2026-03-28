@@ -129,6 +129,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn().mockReturnValue('/tmp/userData'), on: vi.fn() },
+  BrowserWindow: { getFocusedWindow: vi.fn().mockReturnValue(null) },
   dialog: mocks.dialog,
   shell: mocks.shell
 }));
